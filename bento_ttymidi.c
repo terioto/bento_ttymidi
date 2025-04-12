@@ -185,7 +185,7 @@ int main(int argc, char *argv[]) {
                 send_bytes(data, 3, client, port);
                 break;
             }
-            case SND_SEQ_EVENT_PROGRAMCHANGE: {
+            case SND_SEQ_EVENT_PGMCHANGE: {
                 unsigned char data[2] = {
                     0xC0 | ev->data.control.channel,
                     ev->data.control.value
