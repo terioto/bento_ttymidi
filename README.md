@@ -148,3 +148,22 @@ You should now see `/dev/serial0` → usually linked to `/dev/ttyAMA0`
 - Check UART is accessible: `ls -l /dev/serial0`
 - Confirm MIDI messages: `aconnect -l`, `aplaymidi`, or `aseqdump`
 - Watch logs: `journalctl -u bento_ttymidi -f`
+
+
+---
+
+## 🧩 MIDI Hardware Diagrams
+
+### MIDI OUT Circuit
+
+This diagram shows how to connect the Raspberry Pi UART TX (GPIO14) to a standard 5-pin DIN MIDI OUT interface.
+
+![MIDI OUT](A_schematic_diagram_of_a_MIDI_OUT_circuit_for_a_Ra.png)
+
+---
+
+### MIDI IN Circuit (for completeness)
+
+This optional MIDI IN circuit allows receiving MIDI via UART RX (GPIO15) using an optocoupler (e.g. 6N138).
+
+![MIDI IN](A_schematic_diagram_illustrates_a_MIDI_IN_interfac.png)
