@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -132,11 +131,31 @@ void* serial_to_midi(void* arg) {
                     ev.data.note.channel = channel;
                     ev.data.note.note = buffer[1];
                     ev.data.note.velocity = buffer[2];
+                } else if (status == 0xA0) {
+                    ev.type = SND_SEQ_EVENT_KEYPRESS;
+                    ev.data.note.channel = channel;
+                    ev.data.note.note = buffer[1];
+                    ev.data.note.velocity = buffer[2];
                 } else if (status == 0xB0) {
                     ev.type = SND_SEQ_EVENT_CONTROLLER;
                     ev.data.control.channel = channel;
                     ev.data.control.param = buffer[1];
                     ev.data.control.value = buffer[2];
+                } else if (status == 0xC0) {
+                    ev.type = SND_SEQ_EVENT_PGMCHANGE;
+                    ev.data.control.channel = channel;
+                    ev.data.control.value = buffer[1];
+                    state = 0; // only 1 data byte
+                } else if (status == 0xD0) {
+                    ev.type = SND_SEQ_EVENT_CHANPRESS;
+                    ev.data.control.channel = channel;
+                    ev.data.control.value = buffer[1];
+                    state = 0;
+                } else if (status == 0xE0) {
+                    int value = buffer[1] | (buffer[2] << 7);
+                    ev.type = SND_SEQ_EVENT_PITCHBEND;
+                    ev.data.control.channel = channel;
+                    ev.data.control.value = value - 8192;
                 } else {
                     continue;
                 }
@@ -207,6 +226,31 @@ int main(int argc, char *argv[]) {
                 send_bytes(data, 3, client, port);
                 break;
             }
+            case SND_SEQ_EVENT_PGMCHANGE: {
+                unsigned char data[2] = {
+                    0xC0 | ev->data.control.channel,
+                    ev->data.control.value
+                };
+                send_bytes(data, 2, client, port);
+                break;
+            }
+            case SND_SEQ_EVENT_CHANPRESS: {
+                unsigned char data[2] = {
+                    0xD0 | ev->data.control.channel,
+                    ev->data.control.value
+                };
+                send_bytes(data, 2, client, port);
+                break;
+            }
+            case SND_SEQ_EVENT_KEYPRESS: {
+                unsigned char data[3] = {
+                    0xA0 | ev->data.note.channel,
+                    ev->data.note.note,
+                    ev->data.note.velocity
+                };
+                send_bytes(data, 3, client, port);
+                break;
+            }
             case SND_SEQ_EVENT_PITCHBEND: {
                 int value = ev->data.control.value + 8192;
                 unsigned char data[3] = {
@@ -215,14 +259,6 @@ int main(int argc, char *argv[]) {
                     (value >> 7) & 0x7F
                 };
                 send_bytes(data, 3, client, port);
-                break;
-            }
-            case SND_SEQ_EVENT_PGMCHANGE: {
-                unsigned char data[2] = {
-                    0xC0 | ev->data.control.channel,
-                    ev->data.control.value
-                };
-                send_bytes(data, 2, client, port);
                 break;
             }
             case SND_SEQ_EVENT_SYSEX:
