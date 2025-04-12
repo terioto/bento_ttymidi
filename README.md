@@ -109,3 +109,42 @@ MIT (or define your own)
 ## ✉️ Contact
 
 Created by [Your Name] – for use with Raspberry Pi MIDI hardware systems.
+
+
+---
+
+## ⚙️ Raspberry Pi UART Configuration (`config.txt`)
+
+To enable UART MIDI on Raspberry Pi GPIO14 (TX), edit the config.txt:
+
+```bash
+sudo nano /boot/config.txt
+```
+
+### Add or ensure the following lines are present:
+
+```ini
+enable_uart=1
+dtoverlay=disable-bt
+dtoverlay=midi-uart0
+```
+
+> These settings enable UART0 on GPIO14 (TX) and GPIO15 (RX),
+> disable Bluetooth (which uses UART by default),
+> and apply the `midi-uart0` overlay for compatibility.
+
+After editing, reboot your system:
+
+```bash
+sudo reboot
+```
+
+You should now see `/dev/serial0` → usually linked to `/dev/ttyAMA0`
+
+---
+
+## 🧰 Troubleshooting
+
+- Check UART is accessible: `ls -l /dev/serial0`
+- Confirm MIDI messages: `aconnect -l`, `aplaymidi`, or `aseqdump`
+- Watch logs: `journalctl -u bento_ttymidi -f`
