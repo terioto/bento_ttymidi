@@ -1,7 +1,7 @@
 
 # Bento TTYMIDI
 
-`bento_ttymidi` is a lightweight MIDI bridge that forwards ALSA MIDI messages to UART (e.g. for standard 5-pin DIN MIDI hardware). It is designed for Raspberry Pi systems using GPIO14 as TX (MIDI Out).
+bento_ttymidi is a lightweight MIDI bridge that connects ALSA MIDI with UART MIDI hardware. It supports both sending (TX via GPIO14) and receiving (RX via GPIO15) standard 5-pin DIN MIDI messages. Designed for Raspberry Pi systems.
 
 ---
 
