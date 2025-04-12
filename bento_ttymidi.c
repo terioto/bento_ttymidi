@@ -95,22 +95,54 @@ void open_alsa_ports() {
 }
 
 void* serial_to_midi(void* arg) {
-    unsigned char byte;
+    unsigned char buffer[3];
+    int state = 0;
     snd_seq_event_t ev;
 
     while (1) {
+        unsigned char byte;
         if (read(serial_fd, &byte, 1) > 0) {
-            snd_seq_ev_clear(&ev);
-            snd_seq_ev_set_source(&ev, out_port);
-            snd_seq_ev_set_subs(&ev);
-            snd_seq_ev_set_direct(&ev);
-            ev.type = SND_SEQ_EVENT_SYSEX;
-            ev.data.ext.len = 1;
-            ev.data.ext.ptr = malloc(1);
-            ((unsigned char*)ev.data.ext.ptr)[0] = byte;
-            snd_seq_event_output_direct(seq, &ev);
-            if (debug) printf("[RX] UART -- %02X\n", byte);
-            free(ev.data.ext.ptr);
+            if (debug) printf("[RX] %02X\n", byte);
+
+            if ((byte & 0x80) != 0) {
+                buffer[0] = byte;
+                state = 1;
+            } else if (state == 1) {
+                buffer[1] = byte;
+                state = 2;
+            } else if (state == 2) {
+                buffer[2] = byte;
+                state = 0;
+
+                unsigned char status = buffer[0] & 0xF0;
+                unsigned char channel = buffer[0] & 0x0F;
+
+                snd_seq_ev_clear(&ev);
+                snd_seq_ev_set_source(&ev, out_port);
+                snd_seq_ev_set_subs(&ev);
+                snd_seq_ev_set_direct(&ev);
+
+                if (status == 0x90 && buffer[2] > 0) {
+                    ev.type = SND_SEQ_EVENT_NOTEON;
+                    ev.data.note.channel = channel;
+                    ev.data.note.note = buffer[1];
+                    ev.data.note.velocity = buffer[2];
+                } else if (status == 0x80 || (status == 0x90 && buffer[2] == 0)) {
+                    ev.type = SND_SEQ_EVENT_NOTEOFF;
+                    ev.data.note.channel = channel;
+                    ev.data.note.note = buffer[1];
+                    ev.data.note.velocity = buffer[2];
+                } else if (status == 0xB0) {
+                    ev.type = SND_SEQ_EVENT_CONTROLLER;
+                    ev.data.control.channel = channel;
+                    ev.data.control.param = buffer[1];
+                    ev.data.control.value = buffer[2];
+                } else {
+                    continue;
+                }
+
+                snd_seq_event_output_direct(seq, &ev);
+            }
         }
     }
 
