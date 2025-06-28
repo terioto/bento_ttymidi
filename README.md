@@ -138,4 +138,4 @@ The original repository is no longer available, but various forks and archives r
 ## Contact
 
 Website: [https://www.terioto.com](https://www.terioto.com)  
-Email: [mail@terioto.com](mailto:mail@terioto.com)
+Email: [info@terioto.com](mailto:info@terioto.com)
