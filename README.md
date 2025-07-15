@@ -14,6 +14,27 @@ bento_ttymidi is a lightweight MIDI bridge that connects ALSA MIDI with UART MID
 
 ---
 
+## Preperation
+
+### 1. Update the system os
+
+```bash
+sudo apt update
+sudo apt full-upgrade
+
+sudo reboot
+```
+
+### 2. Update eeprom
+
+```bash
+sudo rpi-eeprom-update
+sudo rpi-eeprom-update -a -d
+
+sudo reboot
+```
+
+
 ## Installation
 
 ### 1. Clone the repository
@@ -40,6 +61,42 @@ sudo chmod +x /usr/local/bin/bento_ttymidi
 
 ## Usage
 
+## Raspberry Pi UART Configuration (`config.txt`)
+
+To enable UART MIDI on Raspberry Pi GPIO14 (TX) / GPIO15 (RX), edit the config.txt:
+
+```bash
+sudo nano /boot/firmware/config.txt
+```
+
+### Add or ensure the following lines are present:
+
+Raspberry Pi 4
+
+```ini
+enable_uart=1
+dtoverlay=disable-bt
+dtoverlay=midi-uart0
+```
+
+Raspberry Pi 5
+
+```ini
+enable_uart=1
+dtoverlay=disable-bt
+dtoverlay=midi-uart0-pi5
+```
+
+After editing, reboot your system:
+
+```bash
+sudo reboot
+```
+
+You should now see `/dev/serial0` → usually linked to `/dev/ttyAMA0`
+
+---
+
 ### Manual start with debug output:
 
 ```bash
@@ -49,8 +106,43 @@ bento_ttymidi --debug
 ### Manual start silently:
 
 ```bash
-bento_ttymidi
+bento_ttymidi -s /dev/ttyAMA0 -b 31250 -v &
 ```
+
+### Check ALSA configuration (client IDs can be different):
+
+```bash
+aconnect -l
+
+client 0: 'System' [type=kernel]
+    0 'Timer           '
+    1 'Announce        '
+client 14: 'Midi Through' [type=kernel]
+    0 'Midi Through Port-0'
+client 128: 'bento_ttymidi' [type=user,pid=2041]
+    0 'MIDI out        '
+    1 'MIDI in         '
+```
+
+### Config the MIDI connection (Take look of the client IDs of your system):
+
+```bash
+aconnect 14:0 128:1
+aconnect 128:0 14:0
+```
+
+### Test MIDI out:
+
+```bash
+aplaymidi -p 128:1 your_test_midi_file.mid
+```
+
+### Test MIDI in (You should see MIDI incomming MIDI data):
+
+```bash
+aseqdump -p 128:0
+```
+
 
 ---
 
@@ -101,31 +193,6 @@ systemctl status bento_ttymidi.service
 
 ---
 
-## Raspberry Pi UART Configuration (`config.txt`)
-
-To enable UART MIDI on Raspberry Pi GPIO14 (TX), edit the config.txt:
-
-```bash
-sudo nano /boot/config.txt
-```
-
-### Add or ensure the following lines are present:
-
-```ini
-enable_uart=1
-dtoverlay=disable-bt
-dtoverlay=midi-uart0
-```
-
-After editing, reboot your system:
-
-```bash
-sudo reboot
-```
-
-You should now see `/dev/serial0` → usually linked to `/dev/ttyAMA0`
-
----
 
 
 ## License
