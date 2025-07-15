@@ -137,7 +137,7 @@ aconnect 128:0 14:0
 aplaymidi -p 128:1 your_test_midi_file.mid
 ```
 
-### Test MIDI in (You should see MIDI incomming MIDI data):
+### Test MIDI in (You should see incomming MIDI data):
 
 ```bash
 aseqdump -p 128:0
