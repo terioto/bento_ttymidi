@@ -106,7 +106,7 @@ bento_ttymidi --debug
 ### Manual start silently:
 
 ```bash
-bento_ttymidi -s /dev/ttyAMA0 -b 31250 -v &
+bento_ttymidi -s /dev/ttyAMA0 -v &
 ```
 
 ### Check ALSA configuration (client IDs can be different):
