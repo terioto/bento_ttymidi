@@ -153,31 +153,6 @@ static int configure_serial_termios2(int fd, int speed) {
         printf("[INFO] Serial 8N1 @ %d baud via termios2/BOTHER\n", speed);
     return 0;
 }
-
-static int set_baudrate_termios2(int fd, int speed) {
-    struct bento_termios2 tio;
-
-    if (ioctl(fd, BENTO_TCGETS2, &tio) < 0) {
-        if (debug)
-            perror("[WARN] TCGETS2 failed");
-        return -1;
-    }
-
-    tio.c_cflag &= ~CBAUD;
-    tio.c_cflag |= BOTHER;
-    tio.c_ispeed = (uint32_t)speed;
-    tio.c_ospeed = (uint32_t)speed;
-
-    if (ioctl(fd, BENTO_TCSETS2, &tio) < 0) {
-        if (debug)
-            perror("[WARN] TCSETS2 failed");
-        return -1;
-    }
-
-    if (debug)
-        printf("[INFO] Baudrate %d set via termios2/BOTHER\n", speed);
-    return 0;
-}
 #endif
 
 static int set_baudrate_legacy(int fd, int speed) {
@@ -200,18 +175,6 @@ static int set_baudrate_legacy(int fd, int speed) {
         printf("[INFO] Baudrate %d set via legacy TIOCGSERIAL (baud_base %u)\n",
                speed, ser.baud_base);
     return 0;
-}
-
-static int set_midi_baudrate(int fd, int speed) {
-#ifdef __linux__
-    if (set_baudrate_termios2(fd, speed) == 0)
-        return 0;
-#endif
-    if (set_baudrate_legacy(fd, speed) == 0)
-        return 0;
-
-    fprintf(stderr, "[ERROR] Failed to set baud rate %d\n", speed);
-    return -1;
 }
 
 static void open_serial(void) {
