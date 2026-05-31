@@ -13,7 +13,17 @@
 #include <alsa/asoundlib.h>
 
 #ifdef __linux__
-#include <asm/termbits.h>
+/* termios2 ioctls without asm/termbits.h (clashes with glibc termios.h on Trixie). */
+struct termios2 {
+    tcflag_t c_iflag;
+    tcflag_t c_oflag;
+    tcflag_t c_cflag;
+    tcflag_t c_lflag;
+    cc_t c_line;
+    cc_t c_cc[NCCS];
+    speed_t c_ispeed;
+    speed_t c_ospeed;
+};
 #ifndef TCGETS2
 #define TCGETS2 _IOR('T', 0x2A, struct termios2)
 #endif
@@ -288,6 +298,7 @@ static int midi_expected_data_bytes(unsigned char status) {
 
 static void emit_channel_message(midi_parser_t *p, unsigned char status,
                                  unsigned char d1, unsigned char d2) {
+    (void)p;
     snd_seq_event_t ev;
     unsigned char cmd = status & 0xF0;
     unsigned char channel = status & 0x0F;
