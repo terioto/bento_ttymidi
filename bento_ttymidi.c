@@ -13,26 +13,7 @@
 #include <alsa/asoundlib.h>
 
 #ifdef __linux__
-/* termios2 ioctls without asm/termbits.h (clashes with glibc termios.h on Trixie). */
-struct termios2 {
-    tcflag_t c_iflag;
-    tcflag_t c_oflag;
-    tcflag_t c_cflag;
-    tcflag_t c_lflag;
-    cc_t c_line;
-    cc_t c_cc[NCCS];
-    speed_t c_ispeed;
-    speed_t c_ospeed;
-};
-#ifndef TCGETS2
-#define TCGETS2 _IOR('T', 0x2A, struct termios2)
-#endif
-#ifndef TCSETS2
-#define TCSETS2 _IOW('T', 0x2B, struct termios2)
-#endif
-#ifndef BOTHER
-#define BOTHER 0010000
-#endif
+#include <linux/termios.h>
 #endif
 
 #define DEFAULT_DEVICE "/dev/ttyAMA0"
@@ -123,16 +104,22 @@ static void handle_signal(int sig) {
 static int set_baudrate_termios2(int fd, int speed) {
     struct termios2 tio;
 
-    if (ioctl(fd, TCGETS2, &tio) < 0)
+    if (ioctl(fd, TCGETS2, &tio) < 0) {
+        if (debug)
+            perror("[WARN] TCGETS2 failed");
         return -1;
+    }
 
     tio.c_cflag &= ~CBAUD;
     tio.c_cflag |= BOTHER;
     tio.c_ispeed = speed;
     tio.c_ospeed = speed;
 
-    if (ioctl(fd, TCSETS2, &tio) < 0)
+    if (ioctl(fd, TCSETS2, &tio) < 0) {
+        if (debug)
+            perror("[WARN] TCSETS2 failed");
         return -1;
+    }
 
     if (debug)
         printf("[INFO] Baudrate %d set via termios2/BOTHER\n", speed);
@@ -156,6 +143,9 @@ static int set_baudrate_legacy(int fd, int speed) {
     if (ioctl(fd, TIOCSSERIAL, &ser) < 0)
         return -1;
 
+    fprintf(stderr,
+        "[WARN] Baudrate %d set via legacy TIOCGSERIAL (deprecated on Pi 5; "
+        "check termios2/BOTHER)\n", speed);
     if (debug)
         printf("[INFO] Baudrate %d set via legacy TIOCGSERIAL\n", speed);
     return 0;
