@@ -31,45 +31,12 @@ struct bento_termios2 {
     uint32_t c_ospeed;
 };
 
-#ifndef TCGETS2
-#define TCGETS2 _IOR('T', 0x2A, struct bento_termios2)
-#endif
-#ifndef TCSETS2
-#define TCSETS2 _IOW('T', 0x2B, struct bento_termios2)
-#endif
+/* Avoid system TCGETS2 — it uses incomplete struct termios2 from ioctl.h. */
+#define BENTO_TCGETS2 _IOR('T', 0x2A, struct bento_termios2)
+#define BENTO_TCSETS2 _IOW('T', 0x2B, struct bento_termios2)
 #ifndef BOTHER
 #define BOTHER 0010000
 #endif
-
-static int configure_serial_termios2(int fd, int speed) {
-    struct bento_termios2 tio;
-
-    if (ioctl(fd, TCGETS2, &tio) < 0) {
-        if (debug)
-            perror("[WARN] TCGETS2 failed");
-        return -1;
-    }
-
-    tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-    tio.c_oflag &= ~OPOST;
-    tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    tio.c_cflag &= ~(CSIZE | PARENB | CRTSCTS);
-    tio.c_cflag |= CS8 | CLOCAL | CREAD;
-    tio.c_cflag &= ~CBAUD;
-    tio.c_cflag |= BOTHER;
-    tio.c_ispeed = (uint32_t)speed;
-    tio.c_ospeed = (uint32_t)speed;
-
-    if (ioctl(fd, TCSETS2, &tio) < 0) {
-        if (debug)
-            perror("[WARN] TCSETS2 failed");
-        return -1;
-    }
-
-    if (debug)
-        printf("[INFO] Serial 8N1 @ %d baud via termios2/BOTHER\n", speed);
-    return 0;
-}
 #endif
 
 #define DEFAULT_DEVICE "/dev/ttyAMA0"
@@ -157,10 +124,40 @@ static void handle_signal(int sig) {
 }
 
 #ifdef __linux__
+static int configure_serial_termios2(int fd, int speed) {
+    struct bento_termios2 tio;
+
+    if (ioctl(fd, BENTO_TCGETS2, &tio) < 0) {
+        if (debug)
+            perror("[WARN] TCGETS2 failed");
+        return -1;
+    }
+
+    tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    tio.c_oflag &= ~OPOST;
+    tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    tio.c_cflag &= ~(CSIZE | PARENB | CRTSCTS);
+    tio.c_cflag |= CS8 | CLOCAL | CREAD;
+    tio.c_cflag &= ~CBAUD;
+    tio.c_cflag |= BOTHER;
+    tio.c_ispeed = (uint32_t)speed;
+    tio.c_ospeed = (uint32_t)speed;
+
+    if (ioctl(fd, BENTO_TCSETS2, &tio) < 0) {
+        if (debug)
+            perror("[WARN] TCSETS2 failed");
+        return -1;
+    }
+
+    if (debug)
+        printf("[INFO] Serial 8N1 @ %d baud via termios2/BOTHER\n", speed);
+    return 0;
+}
+
 static int set_baudrate_termios2(int fd, int speed) {
     struct bento_termios2 tio;
 
-    if (ioctl(fd, TCGETS2, &tio) < 0) {
+    if (ioctl(fd, BENTO_TCGETS2, &tio) < 0) {
         if (debug)
             perror("[WARN] TCGETS2 failed");
         return -1;
@@ -171,7 +168,7 @@ static int set_baudrate_termios2(int fd, int speed) {
     tio.c_ispeed = (uint32_t)speed;
     tio.c_ospeed = (uint32_t)speed;
 
-    if (ioctl(fd, TCSETS2, &tio) < 0) {
+    if (ioctl(fd, BENTO_TCSETS2, &tio) < 0) {
         if (debug)
             perror("[WARN] TCSETS2 failed");
         return -1;
