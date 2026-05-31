@@ -23,7 +23,6 @@ DEVICE = os.environ.get("BENTO_UART_DEVICE", "/dev/ttyAMA0")
 BAUD = int(os.environ.get("BENTO_UART_BAUD", "31250"))
 
 BOTHER = 0x1000
-NCCS = 19
 TCGETS2 = 0x802C542A
 TCSETS2 = 0x402C542B
 CBAUD = 0x100F
@@ -33,40 +32,33 @@ CREAD = 0x200
 CRTSCTS = 0x80000000
 
 
-class Termios2(struct.Struct):
-    _fields_ = [
-        ("c_iflag", "I"),
-        ("c_oflag", "I"),
-        ("c_cflag", "I"),
-        ("c_lflag", "I"),
-        ("c_line", "B"),
-        ("c_cc", f"{NCCS}s"),
-        ("c_ispeed", "I"),
-        ("c_ospeed", "I"),
-    ]
+TERMIOS2_STRUCT = struct.Struct("IIII B 19s II")
 
 
 def termios2_set_baud(fd: int, baud: int) -> None:
-    buf = bytearray(Termios2.size)
+    buf = bytearray(TERMIOS2_STRUCT.size)
     fcntl.ioctl(fd, TCGETS2, buf)
-    tio = Termios2.from_buffer_copy(buf)
+    iflag, oflag, cflag, lflag, c_line, c_cc, ispeed, ospeed = TERMIOS2_STRUCT.unpack(buf)
 
-    tio.c_iflag &= ~(
+    iflag &= ~(
         termios.IGNBRK | termios.BRKINT | termios.PARMRK | termios.ISTRIP
         | termios.INLCR | termios.IGNCR | termios.ICRNL | termios.IXON
     )
-    tio.c_oflag &= ~termios.OPOST
-    tio.c_lflag &= ~(
+    oflag &= ~termios.OPOST
+    lflag &= ~(
         termios.ECHO | termios.ECHONL | termios.ICANON | termios.ISIG | termios.IEXTEN
     )
-    tio.c_cflag &= ~(termios.CSIZE | termios.PARENB | CRTSCTS)
-    tio.c_cflag |= CS8 | CLOCAL | CREAD
-    tio.c_cflag &= ~CBAUD
-    tio.c_cflag |= BOTHER
-    tio.c_ispeed = baud
-    tio.c_ospeed = baud
+    cflag &= ~(termios.CSIZE | termios.PARENB | CRTSCTS)
+    cflag |= CS8 | CLOCAL | CREAD
+    cflag &= ~CBAUD
+    cflag |= BOTHER
+    ispeed = baud
+    ospeed = baud
 
-    fcntl.ioctl(fd, TCSETS2, bytes(tio))
+    TERMIOS2_STRUCT.pack_into(
+        buf, 0, iflag, oflag, cflag, lflag, c_line, c_cc, ispeed, ospeed
+    )
+    fcntl.ioctl(fd, TCSETS2, buf)
 
 
 def open_uart() -> int:
