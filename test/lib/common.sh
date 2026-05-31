@@ -7,13 +7,20 @@ CLIENT="${BENTO_MIDI_CLIENT:-bento_ttymidi}"
 
 find_port() {
     local label="$1"
-    local cid="" port=""
+    local cid="" port="" in_client=0
     while IFS= read -r line; do
-        if [[ "$line" =~ ^client\ ([0-9]+): ]]; then
+        if [[ "$line" =~ ^client\ ([0-9]+):.*\'$CLIENT\' ]]; then
             cid="${BASH_REMATCH[1]}"
+            in_client=1
             continue
         fi
-        if [[ -n "$cid" && "$line" =~ ^[[:space:]]+([0-9]+)[[:space:]]+\'$label\' ]]; then
+        if [[ "$line" =~ ^client\ [0-9]+: ]]; then
+            in_client=0
+            cid=""
+            continue
+        fi
+        # ALSA pads port names with trailing spaces inside the quotes.
+        if [[ "$in_client" -eq 1 && "$line" =~ ^[[:space:]]+([0-9]+)[[:space:]]+\'$label[[:space:]]*\' ]]; then
             port="${BASH_REMATCH[1]}"
             echo "${cid}:${port}"
             return 0
