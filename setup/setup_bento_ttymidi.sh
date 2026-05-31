@@ -1,57 +1,67 @@
 #!/bin/bash
+set -euo pipefail
 
-echo "📦 Installing bento_ttymidi..."
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
 
-# 1. Build bento_ttymidi
-echo "🔧 Compiling..."
-gcc bento_ttymidi.c -o bento_ttymidi -lasound -lpthread
+echo "Installing bento_ttymidi for Pi 5 / CM5 (Trixie)..."
 
-# 2. Install binary
-echo "🚚 Installing binary to /usr/local/bin..."
-sudo cp bento_ttymidi /usr/local/bin/
-sudo chmod +x /usr/local/bin/bento_ttymidi
+if ! command -v make >/dev/null 2>&1; then
+    echo "[ERROR] make not found. Install build-essential."
+    exit 1
+fi
 
-# 3. Create systemd service
-echo "🛠 Creating systemd service..."
-sudo tee /etc/systemd/system/bento_ttymidi.service > /dev/null <<EOL
+if ! pkg-config --exists alsa 2>/dev/null; then
+    echo "[WARN] libasound2-dev may be missing (pkg-config alsa not found)"
+fi
+
+echo "Building..."
+make clean 2>/dev/null || true
+make
+
+echo "Installing binary to /usr/local/bin..."
+sudo install -m 755 bento_ttymidi /usr/local/bin/bento_ttymidi
+
+echo "Creating systemd service..."
+sudo tee /etc/systemd/system/bento_ttymidi.service > /dev/null <<'EOL'
 [Unit]
 Description=Bento UART MIDI bridge (bento_ttymidi)
-After=sound.target dev-serial0.device
-Requires=dev-serial0.device
+After=sound.target dev-ttyAMA0.device
+Requires=dev-ttyAMA0.device
 
 [Service]
-ExecStart=/usr/local/bin/bento_ttymidi
-Restart=always
+Type=simple
+ExecStart=/usr/local/bin/bento_ttymidi --device /dev/ttyAMA0
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=5
 User=pi
 Group=pi
+SupplementaryGroups=audio
 
 [Install]
 WantedBy=multi-user.target
 EOL
 
-# 4. Reload systemd and enable service
-echo "🔄 Enabling service..."
-sudo systemctl daemon-reexec
+echo "Enabling service..."
 sudo systemctl daemon-reload
 sudo systemctl enable bento_ttymidi.service
-sudo systemctl start bento_ttymidi.service
 
-# 5. Add udev rule for /dev/serial0 (if needed)
-echo "🔗 Ensuring /dev/serial0 symlink exists..."
-sudo tee /etc/udev/rules.d/99-serial0.rules > /dev/null <<EOL
-KERNEL=="ttyAMA0", SYMLINK+="serial0"
-EOL
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+if [ -e /dev/ttyAMA0 ]; then
+    sudo systemctl restart bento_ttymidi.service
+    echo "Service started."
+else
+    echo "[WARN] /dev/ttyAMA0 not found — configure UART and reboot first."
+    echo "       See README.md: midi-uart0-pi5 in /boot/firmware/config.txt"
+fi
 
-# 6. UART config reminder
+if systemctl is-active --quiet serial-getty@ttyAMA0.service 2>/dev/null; then
+    echo "[WARN] serial-getty@ttyAMA0 is active — it blocks MIDI on ttyAMA0."
+    echo "       sudo systemctl disable --now serial-getty@ttyAMA0.service"
+fi
+
 echo ""
-echo "⚙️  Please ensure your /boot/config.txt includes the following:"
-echo "--------------------------------------"
-echo "enable_uart=1"
-echo "dtoverlay=disable-bt"
-echo "dtoverlay=midi-uart0"
-echo "--------------------------------------"
-echo "Edit with: sudo nano /boot/config.txt"
-echo ""
-echo "✅ Setup complete. Reboot to apply all changes."
+echo "Setup complete."
+echo "  systemctl status bento_ttymidi"
+echo "  aconnect -l | grep bento_ttymidi"

@@ -1,183 +1,169 @@
-
 # Bento TTYMIDI
 
-bento_ttymidi is a lightweight MIDI bridge that connects ALSA MIDI with UART MIDI hardware. It supports both sending (TX via GPIO14) and receiving (RX via GPIO15) standard 5-pin DIN MIDI messages. Designed for Raspberry Pi systems.
+`bento_ttymidi` is an ALSA Sequencer ↔ UART MIDI bridge for **Raspberry Pi 5 / CM5** running **Debian Trixie**.
+
+It connects software MIDI (ALSA) to a UART MIDI interface at **31250 baud** (default: `/dev/ttyAMA0` on GPIO14/15).
 
 ---
 
-## ✅ Features
+## Features
 
-- ALSA MIDI input to UART MIDI output (31250 baud)
-- Supports Note On, Note Off, Control Change, Program Change, Pitch Bend, SysEx
-- Optional debug output (`--debug`)
-- Can run as a `systemd` service on boot
-
----
-
-## 🚀 Installation
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/yourname/bento_ttymidi.git
-cd bento_ttymidi
-```
-
-### 2. Build the binary
-
-```bash
-gcc bento_ttymidi.c -o bento_ttymidi -lasound -lpthread
-```
-
-### 3. Install the binary system-wide
-
-```bash
-sudo cp bento_ttymidi /usr/local/bin/
-sudo chmod +x /usr/local/bin/bento_ttymidi
-```
+- Bidirectional MIDI: ALSA ↔ UART (`/dev/ttyAMA0`)
+- Channel messages, SysEx, Running Status, MIDI Real-Time (Clock, Transport)
+- ALSA ports: `bento_ttymidi:MIDI in` (to hardware) and `bento_ttymidi:MIDI out` (from hardware)
+- Loopback protection: hardware RX is not echoed back to UART TX
+- Optional `--debug` hex logging
+- systemd service for boot (see [setup/README.md](setup/README.md))
 
 ---
 
-## 🧪 Usage
+## Platform Requirements
 
-### Manual start with debug output:
+| Item | Value |
+|------|--------|
+| Hardware | Raspberry Pi 5 or CM5 |
+| OS | Debian Trixie (Pi image) |
+| Serial device | **`/dev/ttyAMA0`** (UART0 on GPIO14/15) |
+| Boot config | `/boot/firmware/config.txt` |
 
-```bash
-bento_ttymidi --debug
-```
+**Important:** On Pi 5, `/dev/serial0` points to the **debug UART** (`ttyAMA10`), not Pin 8/10. Do not use it for MIDI.
 
-### Manual start silently:
+### UART boot configuration
 
-```bash
-bento_ttymidi
-```
-
----
-
-## 🔁 Autostart on Boot (Systemd)
-
-To run `bento_ttymidi` as a background service at boot:
-
-### 1. Create a systemd service file
-
-```bash
-sudo nano /etc/systemd/system/bento_ttymidi.service
-```
-
-Paste the following:
-
-```ini
-[Unit]
-Description=Bento UART MIDI bridge (bento_ttymidi)
-After=sound.target dev-serial0.device
-Requires=dev-serial0.device
-
-[Service]
-ExecStart=/usr/local/bin/bento_ttymidi
-Restart=always
-User=pi
-Group=pi
-
-[Install]
-WantedBy=multi-user.target
-```
-
-> 💡 If you want to enable debug mode, add `--debug` to `ExecStart`
-
-### 2. Enable and start the service
-
-```bash
-sudo systemctl daemon-reexec
-sudo systemctl daemon-reload
-sudo systemctl enable bento_ttymidi.service
-sudo systemctl start bento_ttymidi.service
-```
-
-### 3. Check service status
-
-```bash
-systemctl status bento_ttymidi.service
-```
-
----
-
-## ⚙️ Raspberry Pi UART Configuration (`config.txt`)
-
-To enable UART MIDI on Raspberry Pi GPIO14 (TX), edit the config.txt:
-
-```bash
-sudo nano /boot/config.txt
-```
-
-### Add or ensure the following lines are present:
+Add to `/boot/firmware/config.txt`:
 
 ```ini
 enable_uart=1
 dtoverlay=disable-bt
-dtoverlay=midi-uart0
+dtoverlay=midi-uart0-pi5
 ```
 
-After editing, reboot your system:
+The `midi-uart0-pi5` overlay maps UART0 to GPIO14/15 **and** sets the PL011 clock for MIDI (31250 baud).
+
+Ensure `/boot/firmware/cmdline.txt` does **not** attach a console to `ttyAMA0` (Pi 5 console on `serial0` / debug UART is usually fine).
+
+If MIDI still fails, check that no getty uses the port:
 
 ```bash
-sudo reboot
+systemctl status serial-getty@ttyAMA0.service
+sudo systemctl disable --now serial-getty@ttyAMA0.service
 ```
 
-You should now see `/dev/serial0` → usually linked to `/dev/ttyAMA0`
-
----
-
-## 🧩 MIDI Hardware Diagrams
-
-### MIDI OUT Circuit
-
-This diagram shows how to connect the Raspberry Pi UART TX (GPIO14) to a standard 5-pin DIN MIDI OUT interface.
-
-![MIDI OUT](images/A_schematic_diagram_of_a_MIDI_OUT_circuit_for_a_Ra.png)
-
----
-
-### MIDI IN Circuit (for completeness)
-
-This optional MIDI IN circuit allows receiving MIDI via UART RX (GPIO15) using an optocoupler (e.g. 6N138).
-
-![MIDI IN](images/A_schematic_diagram_illustrates_a_MIDI_IN_interfac.png)
-
----
-
-## 🔗 Creating a persistent /dev/serial0 symlink (if missing)
-
-In some Raspberry Pi systems, `/dev/serial0` may not be automatically created at boot.
-
-To create it permanently (linking to `/dev/ttyAMA0`), add a custom udev rule:
+Reboot, then verify:
 
 ```bash
-sudo nano /etc/udev/rules.d/99-serial0.rules
+ls -l /dev/ttyAMA0
+pinctrl funcs 14-15
 ```
 
-Paste this line:
+Expected: GPIO14 = UART0 TXD, GPIO15 = UART0 RXD.
 
-```udev
-KERNEL=="ttyAMA0", SYMLINK+="serial0"
-```
+---
 
-Then apply the rule:
+## Build
+
+Dependencies (on the Pi):
 
 ```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
+sudo apt update
+sudo apt install -y build-essential libasound2-dev
 ```
 
-After a reboot, `/dev/serial0` should be available.
+Build and install:
+
+```bash
+make
+sudo make install
+```
+
+Or use the automated installer: [setup/README.md](setup/README.md)
 
 ---
 
-## 📄 License
+## Usage
 
-MIT (or define your own)
+```bash
+# Default: /dev/ttyAMA0 @ 31250 baud
+bento_ttymidi
+
+# Custom device / debug
+bento_ttymidi --device /dev/ttyAMA0 --debug
+
+# Send Note Off as 0x80 instead of Note On velocity 0
+bento_ttymidi --note-off-0x80
+
+bento_ttymidi --help
+```
 
 ---
 
-## ✉️ Contact
+## ALSA Port Contract
 
-Created by [Your Name] – for use with Raspberry Pi MIDI hardware systems.
+| Direction | ALSA client | Port name | Purpose |
+|-----------|-------------|-----------|---------|
+| Hardware → software | `bento_ttymidi` | `MIDI out` | Subscribe/read (UART RX) |
+| Software → hardware | `bento_ttymidi` | `MIDI in` | Connect/write (UART TX) |
+
+List ports:
+
+```bash
+aconnect -l
+```
+
+Example connections (replace `CLIENT:PORT` with your app):
+
+```bash
+aconnect 'CLIENT:PORT' 'bento_ttymidi:MIDI in'
+aconnect 'bento_ttymidi:MIDI out' 'CLIENT:PORT'
+```
+
+Monitor hardware input:
+
+```bash
+aseqdump -p 'bento_ttymidi:MIDI out'
+```
+
+Automated tests (Pi, `alsa-utils` installed, service running):
+
+```bash
+cd test && ./run_tests.sh
+```
+
+See [test/README.md](test/README.md) for MIDI IN/OUT scripts, loopback mode, and the copyright-free fixture `fixtures/bento_test.mid`.
+
+---
+
+## Manual Test Matrix
+
+| Test | Command / action | Expected |
+|------|------------------|----------|
+| UART active | `pinctrl funcs 14-15` | UART0 on GPIO14/15 |
+| Service | `systemctl status bento_ttymidi` | active (running) |
+| TX | `aconnect` → `MIDI in`, send notes | Output on UART TX |
+| RX | Source on UART RX, `aseqdump -p 'bento_ttymidi:MIDI out'` | Note/CC events |
+| Program Change | Send PC from controller | No stream desync |
+| SysEx | Short SysEx dump | Visible in `aseqdump` or round-trip |
+| MIDI Clock | Sequencer clock → `MIDI in` | 0xF8 on wire (with `--debug`) |
+| Restart | `systemctl restart bento_ttymidi` | Clean restart |
+
+---
+
+## Troubleshooting
+
+| Problem | Check |
+|---------|--------|
+| `open serial device` fails | `ls -l /dev/ttyAMA0`, overlays in config.txt, reboot |
+| Wrong UART / no MIDI | Use **`/dev/ttyAMA0`**, not `/dev/serial0` on Pi 5 |
+| No RX/TX at all | `dtoverlay=midi-uart0-pi5`, disable `serial-getty@ttyAMA0` |
+| dmesg: custom speed deprecated | Expected on old builds; current code uses termios2/BOTHER |
+| No ALSA output from source | `aconnect` `MIDI out` to your app |
+| No output on UART TX | `aconnect` your app to `bento_ttymidi:MIDI in` |
+| Manual run: permission denied | `sudo usermod -aG dialout pi` (then re-login) |
+| Baud rate / framing errors | Kernel ≥ 6.12.32 recommended; verify with `--debug` |
+| Permission denied (service) | Service runs as `pi`; user in `audio` group |
+
+---
+
+## License
+
+MIT
