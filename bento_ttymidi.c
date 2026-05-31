@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdint.h>
 #include <termios.h>
 #include <pthread.h>
 #include <signal.h>
@@ -13,7 +14,62 @@
 #include <alsa/asoundlib.h>
 
 #ifdef __linux__
-#include <linux/termios.h>
+/*
+ * Kernel termios2 layout (uapi asm-generic/termbits.h). Do not use glibc
+ * speed_t here — size may differ and TCGETS2/TCSETS2 would fail silently.
+ */
+#define BENTO_NCCS 19
+
+struct bento_termios2 {
+    uint32_t c_iflag;
+    uint32_t c_oflag;
+    uint32_t c_cflag;
+    uint32_t c_lflag;
+    uint8_t c_line;
+    uint8_t c_cc[BENTO_NCCS];
+    uint32_t c_ispeed;
+    uint32_t c_ospeed;
+};
+
+#ifndef TCGETS2
+#define TCGETS2 _IOR('T', 0x2A, struct bento_termios2)
+#endif
+#ifndef TCSETS2
+#define TCSETS2 _IOW('T', 0x2B, struct bento_termios2)
+#endif
+#ifndef BOTHER
+#define BOTHER 0010000
+#endif
+
+static int configure_serial_termios2(int fd, int speed) {
+    struct bento_termios2 tio;
+
+    if (ioctl(fd, TCGETS2, &tio) < 0) {
+        if (debug)
+            perror("[WARN] TCGETS2 failed");
+        return -1;
+    }
+
+    tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+    tio.c_oflag &= ~OPOST;
+    tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+    tio.c_cflag &= ~(CSIZE | PARENB | CRTSCTS);
+    tio.c_cflag |= CS8 | CLOCAL | CREAD;
+    tio.c_cflag &= ~CBAUD;
+    tio.c_cflag |= BOTHER;
+    tio.c_ispeed = (uint32_t)speed;
+    tio.c_ospeed = (uint32_t)speed;
+
+    if (ioctl(fd, TCSETS2, &tio) < 0) {
+        if (debug)
+            perror("[WARN] TCSETS2 failed");
+        return -1;
+    }
+
+    if (debug)
+        printf("[INFO] Serial 8N1 @ %d baud via termios2/BOTHER\n", speed);
+    return 0;
+}
 #endif
 
 #define DEFAULT_DEVICE "/dev/ttyAMA0"
@@ -102,7 +158,7 @@ static void handle_signal(int sig) {
 
 #ifdef __linux__
 static int set_baudrate_termios2(int fd, int speed) {
-    struct termios2 tio;
+    struct bento_termios2 tio;
 
     if (ioctl(fd, TCGETS2, &tio) < 0) {
         if (debug)
@@ -112,8 +168,8 @@ static int set_baudrate_termios2(int fd, int speed) {
 
     tio.c_cflag &= ~CBAUD;
     tio.c_cflag |= BOTHER;
-    tio.c_ispeed = speed;
-    tio.c_ospeed = speed;
+    tio.c_ispeed = (uint32_t)speed;
+    tio.c_ospeed = (uint32_t)speed;
 
     if (ioctl(fd, TCSETS2, &tio) < 0) {
         if (debug)
@@ -173,6 +229,12 @@ static void open_serial(void) {
     }
     if (debug)
         printf("[INFO] Opened serial device: %s\n", device_path);
+
+#ifdef __linux__
+    if (configure_serial_termios2(serial_fd, baud_rate) == 0)
+        return;
+    fprintf(stderr, "[WARN] termios2 setup failed, trying termios fallback\n");
+#endif
 
     if (tcgetattr(serial_fd, &tty) != 0) {
         perror("[ERROR] tcgetattr");
