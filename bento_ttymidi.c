@@ -53,6 +53,7 @@ static char *device_path = DEFAULT_DEVICE;
 static int baud_rate = DEFAULT_BAUD;
 static int debug = 0;
 static int note_off_0x80 = 0;
+static int overlay_baud = 1;
 
 static volatile sig_atomic_t keep_running = 1;
 
@@ -74,7 +75,8 @@ static void usage(const char *prog) {
         "\n"
         "Options:\n"
         "  --device PATH   Serial device (default: %s)\n"
-        "  --baud RATE     Baud rate (default: %d)\n"
+        "  --baud RATE     Wire baud when using --exact-baud (default: %d)\n"
+        "  --exact-baud    Set termios2/BOTHER @ --baud (skip overlay B38400)\n"
         "  --debug         Verbose hex logging\n"
         "  --note-off-0x80 Send Note Off as 0x80 instead of Note On vel=0\n"
         "  --help          Show this help\n"
@@ -109,6 +111,8 @@ static int parse_args(int argc, char *argv[]) {
                 fprintf(stderr, "[ERROR] Invalid baud rate\n");
                 return -1;
             }
+        } else if (strcmp(argv[i], "--exact-baud") == 0) {
+            overlay_baud = 0;
         } else {
             fprintf(stderr, "[ERROR] Unknown option: %s\n", argv[i]);
             usage(argv[0]);
@@ -204,9 +208,19 @@ static void open_serial(void) {
         exit(1);
     }
 
-    /* Original bento_ttymidi order: legacy divisor first (works with midi-uart0-pi5). */
     if (set_baudrate_legacy(serial_fd, baud_rate) == 0)
         return;
+
+    /*
+     * midi-uart0 / midi-uart0-pi5 overlay: request B38400 in termios; the DT
+     * overlay maps that to 31250 on the wire. Do not override with BOTHER.
+     */
+    if (overlay_baud) {
+        if (debug)
+            printf("[INFO] Serial 8N1 @ B38400 (overlay maps to %d on wire)\n",
+                   baud_rate);
+        return;
+    }
 
 #ifdef __linux__
     if (configure_serial_termios2(serial_fd, baud_rate) == 0)

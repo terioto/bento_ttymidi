@@ -38,7 +38,7 @@ dtoverlay=disable-bt
 dtoverlay=midi-uart0-pi5
 ```
 
-The `midi-uart0-pi5` overlay maps UART0 to GPIO14/15 **and** sets the PL011 clock for MIDI (31250 baud).
+The `midi-uart0-pi5` overlay maps UART0 to GPIO14/15 and sets the PL011 clock so that **termios B38400 = 31250 baud on the wire**. `bento_ttymidi` requests B38400 by default; use `--exact-baud` only if you run **without** the overlay.
 
 Ensure `/boot/firmware/cmdline.txt` does **not** attach a console to `ttyAMA0` (Pi 5 console on `serial0` / debug UART is usually fine).
 
@@ -155,7 +155,8 @@ See [test/README.md](test/README.md) for MIDI IN/OUT scripts, loopback mode, and
 | `open serial device` fails | `ls -l /dev/ttyAMA0`, overlays in config.txt, reboot |
 | Wrong UART / no MIDI | Use **`/dev/ttyAMA0`**, not `/dev/serial0` on Pi 5 |
 | No RX/TX at all | `dtoverlay=midi-uart0-pi5`, disable `serial-getty@ttyAMA0` |
-| dmesg: custom speed deprecated | Expected on old builds; current code uses termios2/BOTHER |
+| Garbled bytes (e.g. `48 05 FF` instead of `90 2F 40`) | Wrong baud mode: use overlay B38400, not termios2 @ 31250; rebuild `bento_ttymidi` |
+| dmesg: custom speed deprecated | Legacy TIOCGSERIAL path; harmless if overlay + B38400 is used |
 | No ALSA output from source | `aconnect` `MIDI out` to your app |
 | No output on UART TX | `aconnect` your app to `bento_ttymidi:MIDI in` |
 | Manual run: permission denied | `sudo usermod -aG dialout pi` (then re-login) |

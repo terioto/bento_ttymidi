@@ -5,18 +5,18 @@ Minimal UART MIDI test without bento_ttymidi (direct /dev/ttyAMA0).
 Usage:
   ./raw_uart_test.py listen
   ./raw_uart_test.py send 90 3c 40
-  ./raw_uart_test.py --legacy-baud listen
-  ./raw_uart_test.py --legacy-baud send 90 3c 40 80 3c 00
+  ./raw_uart_test.py --overlay-baud send 90 3c 40   # Pi + midi-uart0-pi5 (default)
+  ./raw_uart_test.py --exact-baud send 90 3c 40     # termios2/BOTHER @ 31250
 
-Options:
-  --legacy-baud   Try B38400 + TIOCGSERIAL first (Pi 4 and older); on Pi 5 the
-                  PL011 driver often rejects TIOCGSERIAL and falls back to
-                  termios2/BOTHER (same as bento_ttymidi).
-  (default)       termios2 / BOTHER @ 31250
+Baud modes (mutually exclusive):
+  --overlay-baud  B38400 in termios; midi-uart overlay → 31250 on wire (Pi default)
+  --exact-baud    termios2 / BOTHER @ UART_BAUD
+  --legacy-baud   B38400 + TIOCGSERIAL custom divisor (Pi 4, often unsupported on Pi 5)
 
 Environment:
+  UART_OVERLAY_BAUD=1|0   default 1
   UART_DEVICE / BENTO_UART_DEVICE   serial device (default /dev/ttyAMA0)
-  UART_BAUD   / BENTO_UART_BAUD     baud rate (default 31250)
+  UART_BAUD   / BENTO_UART_BAUD     wire baud for --exact-baud (default 31250)
 
 Requires: Python 3, group dialout for the serial device.
 """
@@ -38,6 +38,7 @@ DEVICE = os.environ.get("UART_DEVICE") or os.environ.get(
     "BENTO_UART_DEVICE", "/dev/ttyAMA0"
 )
 BAUD = int(os.environ.get("UART_BAUD") or os.environ.get("BENTO_UART_BAUD", "31250"))
+DEFAULT_OVERLAY_BAUD = os.environ.get("UART_OVERLAY_BAUD", "1") != "0"
 DEFAULT_ROUNDTRIP_TIMEOUT = 2.0
 
 BOTHER = 0x1000
@@ -164,20 +165,56 @@ def legacy_set_baud(fd: int, baud: int) -> bool:
     return True
 
 
-def open_uart(prefer_legacy: bool) -> tuple[int, str]:
+def overlay_set_baud(fd: int) -> None:
+    """B38400 8N1 raw — midi-uart0-pi5 overlay maps this to 31250 on the wire."""
+    tty = termios.tcgetattr(fd)
+    make_raw_tty(tty)
+    set_tty_speed_b38400(tty)
+    tty[3] |= termios.CLOCAL | termios.CREAD
+    if hasattr(termios, "CRTSCTS"):
+        tty[3] &= ~termios.CRTSCTS
+    termios.tcsetattr(fd, termios.TCSANOW, tty)
+
+
+def open_uart(
+    *,
+    prefer_legacy: bool,
+    use_overlay: bool,
+    exact_baud: bool,
+) -> tuple[int, str]:
     fd = os.open(DEVICE, os.O_RDWR | os.O_NOCTTY)
     if prefer_legacy and legacy_set_baud(fd, BAUD):
         return fd, f"legacy B38400+TIOCGSERIAL @ {BAUD}"
 
+    if use_overlay and not exact_baud and not prefer_legacy:
+        overlay_set_baud(fd)
+        return fd, f"overlay B38400 (~{BAUD} on wire via midi-uart)"
+
     if prefer_legacy:
         print(
             f"WARN: TIOCGSERIAL not supported on {DEVICE}; "
-            f"using termios2/BOTHER @ {BAUD} (bento_ttymidi fallback)",
+            f"falling back to termios2/BOTHER @ {BAUD}",
             file=sys.stderr,
         )
 
     termios2_set_baud(fd, BAUD)
     return fd, f"termios2/BOTHER @ {BAUD}"
+
+
+class BaudOptions:
+    __slots__ = ("legacy", "overlay", "exact")
+
+    def __init__(self, legacy: bool, overlay: bool, exact: bool) -> None:
+        self.legacy = legacy
+        self.overlay = overlay
+        self.exact = exact
+
+    def open(self) -> tuple[int, str]:
+        return open_uart(
+            prefer_legacy=self.legacy,
+            use_overlay=self.overlay,
+            exact_baud=self.exact,
+        )
 
 
 def read_until_deadline(fd: int, deadline: float) -> bytes:
@@ -195,8 +232,8 @@ def read_until_deadline(fd: int, deadline: float) -> bytes:
     return bytes(rx)
 
 
-def cmd_listen(legacy: bool, timeout: float | None) -> int:
-    fd, mode = open_uart(legacy)
+def cmd_listen(baud: BaudOptions, timeout: float | None) -> int:
+    fd, mode = baud.open()
     if timeout is None:
         print(f"Listening on {DEVICE} ({mode}), Ctrl+C to stop")
     else:
@@ -223,24 +260,24 @@ def cmd_listen(legacy: bool, timeout: float | None) -> int:
     return 0
 
 
-def cmd_send(legacy: bool, hex_args: list[str]) -> int:
+def cmd_send(baud: BaudOptions, hex_args: list[str]) -> int:
     if not hex_args:
         print("Usage: send 90 3c 40 ...", file=sys.stderr)
         return 1
     data = bytes(int(tok, 16) & 0xFF for tok in hex_args)
-    fd, mode = open_uart(legacy)
+    fd, mode = baud.open()
     os.write(fd, data)
     os.close(fd)
     print(f"Sent ({mode}): {' '.join(f'{b:02X}' for b in data)}")
     return 0
 
 
-def cmd_roundtrip(legacy: bool, hex_args: list[str], timeout: float) -> int:
+def cmd_roundtrip(baud: BaudOptions, hex_args: list[str], timeout: float) -> int:
     if not hex_args:
         print("Usage: roundtrip 90 3c 40 ...", file=sys.stderr)
         return 1
     data = bytes(int(tok, 16) & 0xFF for tok in hex_args)
-    fd, mode = open_uart(legacy)
+    fd, mode = baud.open()
     os.write(fd, data)
     print(f"Sent ({mode}): {' '.join(f'{b:02X}' for b in data)}")
     print(f"Listening {timeout:g}s for RX (needs OUT→IN loopback)...")
@@ -268,9 +305,20 @@ def main() -> int:
         help=f"Serial device (default: {DEVICE})",
     )
     parser.add_argument(
+        "--overlay-baud",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_OVERLAY_BAUD,
+        help="B38400 for midi-uart overlay (default; use --no-overlay-baud to disable)",
+    )
+    parser.add_argument(
+        "--exact-baud",
+        action="store_true",
+        help="termios2/BOTHER @ UART_BAUD (disables overlay mode)",
+    )
+    parser.add_argument(
         "--legacy-baud",
         action="store_true",
-        help="Try B38400 + TIOCGSERIAL before termios2",
+        help="Try B38400 + TIOCGSERIAL custom divisor",
     )
     parser.add_argument(
         "--timeout",
@@ -290,12 +338,19 @@ def main() -> int:
     if args.device:
         DEVICE = args.device
 
+    use_overlay = args.overlay_baud and not args.exact_baud and not args.legacy_baud
+    baud = BaudOptions(
+        legacy=args.legacy_baud,
+        overlay=use_overlay,
+        exact=args.exact_baud,
+    )
+
     if args.command == "listen":
-        return cmd_listen(args.legacy_baud, args.timeout)
+        return cmd_listen(baud, args.timeout)
     if args.command == "send":
-        return cmd_send(args.legacy_baud, args.hex_bytes)
+        return cmd_send(baud, args.hex_bytes)
     timeout = args.timeout if args.timeout is not None else DEFAULT_ROUNDTRIP_TIMEOUT
-    return cmd_roundtrip(args.legacy_baud, args.hex_bytes, timeout)
+    return cmd_roundtrip(baud, args.hex_bytes, timeout)
 
 
 if __name__ == "__main__":

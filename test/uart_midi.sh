@@ -20,6 +20,7 @@ LOOPBACK="${UART_LOOPBACK:-0}"
 STOP_BRIDGE="${UART_STOP_BRIDGE:-1}"
 ROUNDTRIP_TIMEOUT="${UART_ROUNDTRIP_TIMEOUT:-2}"
 LEGACY="${UART_LEGACY_BAUD:-0}"
+OVERLAY_BAUD="${UART_OVERLAY_BAUD:-1}"
 
 # Note on / Note off C4
 TEST_PATTERN=(90 3c 40 80 3c 00)
@@ -32,8 +33,21 @@ raw_uart() {
     local extra=()
     if [ "$LEGACY" = "1" ]; then
         extra+=(--legacy-baud)
+    elif [ "$OVERLAY_BAUD" = "1" ]; then
+        extra+=(--overlay-baud)
+    else
+        extra+=(--no-overlay-baud --exact-baud)
     fi
     python3 "$RAW" --device "$DEVICE" "${extra[@]}" "$@"
+}
+
+has_valid_midi_bytes() {
+    # Channel voice status bytes are 0x80-0xEF
+    grep -qE '(^| )[89ABCDEF][0-9A-F]( |$)' <<<"$1"
+}
+
+has_any_hex_bytes() {
+    grep -qE '[0-9A-F]{2} [0-9A-F]{2}' <<<"$1"
 }
 
 record() {
@@ -47,7 +61,12 @@ record() {
 
 echo "UART MIDI test suite (no ALSA / no bento_ttymidi)"
 echo "Date  : $(date -Iseconds 2>/dev/null || date)"
-echo "Device: $DEVICE @ ${BAUD} baud"
+echo "Device: $DEVICE"
+if [ "$OVERLAY_BAUD" = "1" ] && [ "$LEGACY" != "1" ]; then
+    echo "Baud  : overlay B38400 (~${BAUD} on wire via midi-uart0-pi5)"
+else
+    echo "Baud  : ${BAUD} (exact/legacy mode)"
+fi
 echo ""
 
 if [ ! -e "$DEVICE" ]; then
@@ -93,18 +112,27 @@ if [ "$LOOPBACK" = "1" ]; then
 else
     echo "Listening ${CAPTURE_SEC}s — send MIDI into HAT IN from a controller/Mac."
     set +e
-    raw_uart listen --timeout "$CAPTURE_SEC"
+    in_output="$(raw_uart listen --timeout "$CAPTURE_SEC" 2>&1)"
     in_rc=$?
     set -e
-    if [ "$in_rc" -eq 0 ]; then
-        echo "[PASS] IN: bytes received on $DEVICE"
-        record 0
-    elif [ "$in_rc" -eq 2 ]; then
+    echo "$in_output"
+    if [ "$in_rc" -eq 2 ]; then
         echo "[SKIP] IN: no bytes in ${CAPTURE_SEC}s (no external source?)"
         record 2
-    else
+    elif [ "$in_rc" -ne 0 ]; then
         echo "[FAIL] IN: listen failed (rc=$in_rc)"
         record 1
+    elif has_valid_midi_bytes "$in_output"; then
+        echo "[PASS] IN: valid MIDI status bytes received"
+        record 0
+    elif has_any_hex_bytes "$in_output"; then
+        echo "[FAIL] IN: bytes received but not valid MIDI (likely baud mismatch)"
+        echo "       Expected e.g. 90 2F 40 — got garbage like 48 05 FF?"
+        echo "       Use overlay mode (default) or check TRS Type-A / IN vs OUT."
+        record 1
+    else
+        echo "[SKIP] IN: no payload bytes captured"
+        record 2
     fi
 fi
 

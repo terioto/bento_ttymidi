@@ -101,6 +101,7 @@ UART_STOP_BRIDGE=0 ./uart_midi.sh   # do not stop bento_ttymidi
 | `UART_LOOPBACK` | `0` | `1` = run roundtrip test |
 | `UART_ROUNDTRIP_TIMEOUT` | `2` | Loopback RX window (seconds) |
 | `UART_STOP_BRIDGE` | `1` | Stop `bento_ttymidi` before test |
+| `UART_OVERLAY_BAUD` | `1` | B38400 via midi-uart overlay (Pi 5 default) |
 | `UART_LEGACY_BAUD` | `0` | `1` = try TIOCGSERIAL first |
 
 Manual UART tools:
