@@ -196,11 +196,9 @@ static int set_baudrate_legacy(int fd, int speed) {
     if (ioctl(fd, TIOCSSERIAL, &ser) < 0)
         return -1;
 
-    fprintf(stderr,
-        "[WARN] Baudrate %d set via legacy TIOCGSERIAL (deprecated on Pi 5; "
-        "check termios2/BOTHER)\n", speed);
     if (debug)
-        printf("[INFO] Baudrate %d set via legacy TIOCGSERIAL\n", speed);
+        printf("[INFO] Baudrate %d set via legacy TIOCGSERIAL (baud_base %u)\n",
+               speed, ser.baud_base);
     return 0;
 }
 
@@ -227,12 +225,6 @@ static void open_serial(void) {
     if (debug)
         printf("[INFO] Opened serial device: %s\n", device_path);
 
-#ifdef __linux__
-    if (configure_serial_termios2(serial_fd, baud_rate) == 0)
-        return;
-    fprintf(stderr, "[WARN] termios2 setup failed, trying termios fallback\n");
-#endif
-
     if (tcgetattr(serial_fd, &tty) != 0) {
         perror("[ERROR] tcgetattr");
         exit(1);
@@ -249,8 +241,17 @@ static void open_serial(void) {
         exit(1);
     }
 
-    if (set_midi_baudrate(serial_fd, baud_rate) != 0)
-        exit(1);
+    /* Original bento_ttymidi order: legacy divisor first (works with midi-uart0-pi5). */
+    if (set_baudrate_legacy(serial_fd, baud_rate) == 0)
+        return;
+
+#ifdef __linux__
+    if (configure_serial_termios2(serial_fd, baud_rate) == 0)
+        return;
+#endif
+
+    fprintf(stderr, "[ERROR] Failed to configure serial for %d baud\n", baud_rate);
+    exit(1);
 }
 
 static void open_alsa_ports(void) {
