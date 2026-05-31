@@ -94,10 +94,26 @@ def termios2_set_baud(fd: int, baud: int) -> None:
     fcntl.ioctl(fd, TCSETS2, buf)
 
 
+def make_raw_tty(tty: list) -> None:
+    """Python termios has no cfmakeraw(); apply equivalent flags."""
+    tty[0] &= ~(
+        termios.IGNBRK | termios.BRKINT | termios.PARMRK | termios.ISTRIP
+        | termios.INLCR | termios.IGNCR | termios.ICRNL | termios.IXON
+    )
+    tty[1] &= ~termios.OPOST
+    tty[2] &= ~(
+        termios.ECHO | termios.ECHONL | termios.ICANON | termios.ISIG | termios.IEXTEN
+    )
+    tty[3] &= ~(termios.CSIZE | termios.PARENB)
+    tty[3] |= termios.CS8
+    if hasattr(termios, "CRTSCTS"):
+        tty[3] &= ~termios.CRTSCTS
+
+
 def legacy_set_baud(fd: int, baud: int) -> None:
     """Match original bento_ttymidi: B38400 placeholder + custom divisor."""
     tty = termios.tcgetattr(fd)
-    termios.cfmakeraw(tty)
+    make_raw_tty(tty)
     termios.cfsetispeed(tty, termios.B38400)
     termios.cfsetospeed(tty, termios.B38400)
     tty.c_cflag |= termios.CLOCAL | termios.CREAD
