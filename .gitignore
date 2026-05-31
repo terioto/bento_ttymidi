@@ -1,1 +1,5 @@
-bento
+# Build artifact
+bento_ttymidi
+
+# Local Bento stack docs / schematics (not versioned)
+bento/

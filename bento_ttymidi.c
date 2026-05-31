@@ -81,7 +81,8 @@ static void usage(const char *prog) {
         "  --note-off-0x80 Send Note Off as 0x80 instead of Note On vel=0\n"
         "  --help          Show this help\n"
         "\n"
-        "Note: On Pi 5 do NOT use /dev/serial0 (debug UART). Use /dev/ttyAMA0.\n",
+        "Default serial mode: B38400 termios with midi-uart overlay (31250 on wire).\n"
+        "On Pi 5 use /dev/ttyAMA0, not /dev/serial0 (debug UART).\n",
         prog, DEFAULT_DEVICE, DEFAULT_BAUD);
 }
 

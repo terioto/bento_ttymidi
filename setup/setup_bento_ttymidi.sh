@@ -38,7 +38,7 @@ KillSignal=SIGTERM
 TimeoutStopSec=5
 User=pi
 Group=pi
-SupplementaryGroups=audio
+SupplementaryGroups=audio dialout
 
 [Install]
 WantedBy=multi-user.target
@@ -49,6 +49,9 @@ sudo systemctl daemon-reload
 sudo systemctl enable bento_ttymidi.service
 
 if [ -e /dev/ttyAMA0 ]; then
+    if id pi >/dev/null 2>&1; then
+        sudo usermod -aG dialout,audio pi 2>/dev/null || true
+    fi
     sudo systemctl restart bento_ttymidi.service
     echo "Service started."
 else

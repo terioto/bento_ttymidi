@@ -2,7 +2,7 @@
 
 `bento_ttymidi` is an ALSA Sequencer ↔ UART MIDI bridge for **Raspberry Pi 5 / CM5** running **Debian Trixie**.
 
-It connects software MIDI (ALSA) to a UART MIDI interface at **31250 baud** (default: `/dev/ttyAMA0` on GPIO14/15).
+It connects software MIDI (ALSA) to a UART MIDI interface on **`/dev/ttyAMA0`** (GPIO14/15). With the **`midi-uart0-pi5`** overlay, the bridge requests **termios B38400**, which the overlay maps to **31250 baud on the wire**.
 
 ---
 
@@ -83,17 +83,22 @@ Or use the automated installer: [setup/README.md](setup/README.md)
 ## Usage
 
 ```bash
-# Default: /dev/ttyAMA0 @ 31250 baud
+# Default: /dev/ttyAMA0, B38400 termios (31250 on wire via midi-uart0-pi5 overlay)
 bento_ttymidi
 
-# Custom device / debug
+# Custom device / debug (shows [INFO] B38400 overlay or [TX]/[RX] hex)
 bento_ttymidi --device /dev/ttyAMA0 --debug
+
+# Without overlay: set exact wire baud via termios2/BOTHER
+bento_ttymidi --exact-baud --baud 31250
 
 # Send Note Off as 0x80 instead of Note On velocity 0
 bento_ttymidi --note-off-0x80
 
 bento_ttymidi --help
 ```
+
+**Do not** use `--exact-baud` on Pi 5 with `midi-uart0-pi5` unless you know you need it — it bypasses the overlay B38400 mapping and causes garbled MIDI.
 
 ---
 
@@ -161,7 +166,7 @@ See [test/README.md](test/README.md) for MIDI IN/OUT scripts, loopback mode, and
 | No output on UART TX | `aconnect` your app to `bento_ttymidi:MIDI in` |
 | Manual run: permission denied | `sudo usermod -aG dialout pi` (then re-login) |
 | Baud rate / framing errors | Kernel ≥ 6.12.32 recommended; verify with `--debug` |
-| Permission denied (service) | Service runs as `pi`; user in `audio` group |
+| Permission denied (service) | Service runs as `pi`; needs `dialout` (and `audio`) — see [setup/README.md](setup/README.md) |
 
 ---
 
