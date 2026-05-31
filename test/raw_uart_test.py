@@ -41,6 +41,8 @@ TIOCGSERIAL = 0x8020541E
 TIOCSSERIAL = 0x4020541F
 ASYNC_SPD_MASK = 0x1030
 ASYNC_SPD_CUST = 0x0030
+B38400 = getattr(termios, "B38400", 0x00001002)
+CBAUD_MASK = getattr(termios, "CBAUD", 0o010017)
 
 TERMIOS2_STRUCT = struct.Struct("IIII B 19s II")
 
@@ -110,14 +112,23 @@ def make_raw_tty(tty: list) -> None:
         tty[3] &= ~termios.CRTSCTS
 
 
+def set_tty_speed_b38400(tty: list) -> None:
+    """Set B38400 without cfsetispeed/cfsetospeed (not exposed in Python termios)."""
+    if len(tty) >= 6:
+        tty[4] = B38400
+        tty[5] = B38400
+    tty[3] &= ~CBAUD_MASK
+    tty[3] |= B38400
+
+
 def legacy_set_baud(fd: int, baud: int) -> None:
     """Match original bento_ttymidi: B38400 placeholder + custom divisor."""
     tty = termios.tcgetattr(fd)
     make_raw_tty(tty)
-    termios.cfsetispeed(tty, termios.B38400)
-    termios.cfsetospeed(tty, termios.B38400)
-    tty.c_cflag |= termios.CLOCAL | termios.CREAD
-    tty.c_cflag &= ~termios.CRTSCTS
+    set_tty_speed_b38400(tty)
+    tty[3] |= termios.CLOCAL | termios.CREAD
+    if hasattr(termios, "CRTSCTS"):
+        tty[3] &= ~termios.CRTSCTS
     termios.tcsetattr(fd, termios.TCSANOW, tty)
 
     ser = SerialStruct()
