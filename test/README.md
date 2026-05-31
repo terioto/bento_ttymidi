@@ -15,14 +15,26 @@ Required commands: `aconnect`, `aplaymidi`, `aseqdump`.
 
 ## Quick run
 
+**ALSA bridge** (requires `bento_ttymidi` running):
+
 ```bash
 cd test
 ./run_tests.sh
 ```
 
+**UART hardware only** (no `bento_ttymidi`, no ALSA):
+
+```bash
+cd test
+./uart_midi.sh
+```
+
 | Script | Purpose |
 |--------|---------|
-| `run_tests.sh` | Runs OUT + IN tests |
+| `run_tests.sh` | Runs OUT + IN tests via ALSA |
+| `uart_midi.sh` | UART OUT / IN / loopback via `raw_uart_test.py` |
+| `raw_uart_test.py` | Low-level send / listen / roundtrip on serial |
+| `stop_bento_midi.sh` | Stop bridge before isolated UART tests |
 | `test_midi_out.sh` | Plays `fixtures/bento_test.mid` into `bento_ttymidi:MIDI in` |
 | `test_midi_in.sh` | Captures events on `bento_ttymidi:MIDI out` |
 | `monitor.sh` | Manual live monitor or recording (former `debug/midi_logger.sh`) |
@@ -63,6 +75,41 @@ BENTO_MIDI_LOOPBACK=1 ./test_midi_in.sh
 | `BENTO_MIDI_LOOPBACK` | `0` | `1` = round-trip IN test |
 | `BENTO_CAPTURE_SEC` | `5` | Passive capture duration |
 | `BENTO_TEST_TIMEOUT` | `15` / `20` | Command timeouts |
+
+## UART test suite (`uart_midi.sh`)
+
+Stops `bento_ttymidi` by default, then runs three checks on `/dev/ttyAMA0`:
+
+| Step | Auto PASS | Needs hardware |
+|------|-----------|----------------|
+| OUT | bytes written | optional: MIDI monitor on HAT OUT |
+| IN | bytes in capture window | MIDI source on HAT IN (or skip) |
+| Loopback | RX == TX | `UART_LOOPBACK=1` + OUT wired to IN |
+
+```bash
+./uart_midi.sh
+UART_LOOPBACK=1 ./uart_midi.sh
+UART_CAPTURE_SEC=10 ./uart_midi.sh
+UART_STOP_BRIDGE=0 ./uart_midi.sh   # do not stop bento_ttymidi
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `UART_DEVICE` | `/dev/ttyAMA0` | Serial device |
+| `UART_BAUD` | `31250` | Baud rate |
+| `UART_CAPTURE_SEC` | `5` | Passive IN listen duration |
+| `UART_LOOPBACK` | `0` | `1` = run roundtrip test |
+| `UART_ROUNDTRIP_TIMEOUT` | `2` | Loopback RX window (seconds) |
+| `UART_STOP_BRIDGE` | `1` | Stop `bento_ttymidi` before test |
+| `UART_LEGACY_BAUD` | `0` | `1` = try TIOCGSERIAL first |
+
+Manual UART tools:
+
+```bash
+./raw_uart_test.py send 90 3c 40 80 3c 00
+./raw_uart_test.py listen --timeout 5
+./raw_uart_test.py roundtrip --timeout 2 90 3c 40
+```
 
 ## Manual monitoring
 

@@ -9,25 +9,36 @@ Usage:
   ./raw_uart_test.py --legacy-baud send 90 3c 40 80 3c 00
 
 Options:
-  --legacy-baud   B38400 + TIOCGSERIAL custom divisor (original bento_ttymidi)
+  --legacy-baud   Try B38400 + TIOCGSERIAL first (Pi 4 and older); on Pi 5 the
+                  PL011 driver often rejects TIOCGSERIAL and falls back to
+                  termios2/BOTHER (same as bento_ttymidi).
   (default)       termios2 / BOTHER @ 31250
 
-Requires: Python 3, group dialout for /dev/ttyAMA0.
+Environment:
+  UART_DEVICE / BENTO_UART_DEVICE   serial device (default /dev/ttyAMA0)
+  UART_BAUD   / BENTO_UART_BAUD     baud rate (default 31250)
+
+Requires: Python 3, group dialout for the serial device.
 """
 
 from __future__ import annotations
 
 import argparse
 import ctypes
+import errno
 import fcntl
 import os
+import select
 import struct
 import sys
 import termios
 import time
 
-DEVICE = os.environ.get("BENTO_UART_DEVICE", "/dev/ttyAMA0")
-BAUD = int(os.environ.get("BENTO_UART_BAUD", "31250"))
+DEVICE = os.environ.get("UART_DEVICE") or os.environ.get(
+    "BENTO_UART_DEVICE", "/dev/ttyAMA0"
+)
+BAUD = int(os.environ.get("UART_BAUD") or os.environ.get("BENTO_UART_BAUD", "31250"))
+DEFAULT_ROUNDTRIP_TIMEOUT = 2.0
 
 BOTHER = 0x1000
 TCGETS2 = 0x802C542A
@@ -121,8 +132,8 @@ def set_tty_speed_b38400(tty: list) -> None:
     tty[3] |= B38400
 
 
-def legacy_set_baud(fd: int, baud: int) -> None:
-    """Match original bento_ttymidi: B38400 placeholder + custom divisor."""
+def legacy_set_baud(fd: int, baud: int) -> bool:
+    """B38400 placeholder + TIOCGSERIAL divisor. Returns False if unsupported."""
     tty = termios.tcgetattr(fd)
     make_raw_tty(tty)
     set_tty_speed_b38400(tty)
@@ -132,41 +143,83 @@ def legacy_set_baud(fd: int, baud: int) -> None:
     termios.tcsetattr(fd, termios.TCSANOW, tty)
 
     ser = SerialStruct()
-    fcntl.ioctl(fd, TIOCGSERIAL, ser)
+    try:
+        fcntl.ioctl(fd, TIOCGSERIAL, ser)
+    except OSError as exc:
+        if exc.errno in (errno.ENOTTY, errno.EINVAL, errno.EPERM):
+            return False
+        raise
+
     ser.custom_divisor = ser.baud_base // baud
     if ser.custom_divisor == 0:
         raise OSError(f"invalid custom_divisor for baud_base={ser.baud_base}")
+
     ser.flags = (ser.flags & ~ASYNC_SPD_MASK) | ASYNC_SPD_CUST
-    fcntl.ioctl(fd, TIOCSSERIAL, ser)
-
-
-def open_uart(legacy: bool) -> int:
-    fd = os.open(DEVICE, os.O_RDWR | os.O_NOCTTY)
-    if legacy:
-        legacy_set_baud(fd, BAUD)
-    else:
-        termios2_set_baud(fd, BAUD)
-    return fd
-
-
-def baud_mode_label(legacy: bool) -> str:
-    if legacy:
-        return f"legacy B38400+TIOCGSERIAL @ {BAUD}"
-    return f"termios2/BOTHER @ {BAUD}"
-
-
-def cmd_listen(legacy: bool) -> int:
-    fd = open_uart(legacy)
-    print(f"Listening on {DEVICE} ({baud_mode_label(legacy)}), Ctrl+C to stop")
     try:
-        while True:
-            chunk = os.read(fd, 64)
-            if chunk:
-                print(" ".join(f"{b:02X}" for b in chunk), flush=True)
+        fcntl.ioctl(fd, TIOCSSERIAL, ser)
+    except OSError as exc:
+        if exc.errno in (errno.ENOTTY, errno.EINVAL, errno.EPERM):
+            return False
+        raise
+    return True
+
+
+def open_uart(prefer_legacy: bool) -> tuple[int, str]:
+    fd = os.open(DEVICE, os.O_RDWR | os.O_NOCTTY)
+    if prefer_legacy and legacy_set_baud(fd, BAUD):
+        return fd, f"legacy B38400+TIOCGSERIAL @ {BAUD}"
+
+    if prefer_legacy:
+        print(
+            f"WARN: TIOCGSERIAL not supported on {DEVICE}; "
+            f"using termios2/BOTHER @ {BAUD} (bento_ttymidi fallback)",
+            file=sys.stderr,
+        )
+
+    termios2_set_baud(fd, BAUD)
+    return fd, f"termios2/BOTHER @ {BAUD}"
+
+
+def read_until_deadline(fd: int, deadline: float) -> bytes:
+    rx = bytearray()
+    while True:
+        remaining = deadline - time.time()
+        if remaining <= 0:
+            break
+        ready, _, _ = select.select([fd], [], [], remaining)
+        if not ready:
+            break
+        chunk = os.read(fd, 64)
+        if chunk:
+            rx.extend(chunk)
+    return bytes(rx)
+
+
+def cmd_listen(legacy: bool, timeout: float | None) -> int:
+    fd, mode = open_uart(legacy)
+    if timeout is None:
+        print(f"Listening on {DEVICE} ({mode}), Ctrl+C to stop")
+    else:
+        print(f"Listening on {DEVICE} ({mode}) for {timeout:g}s")
+    rx = bytearray()
+    try:
+        if timeout is None:
+            while True:
+                chunk = os.read(fd, 64)
+                if chunk:
+                    rx.extend(chunk)
+                    print(" ".join(f"{b:02X}" for b in chunk), flush=True)
+        else:
+            data = read_until_deadline(fd, time.time() + timeout)
+            rx.extend(data)
+            if data:
+                print(" ".join(f"{b:02X}" for b in data), flush=True)
     except KeyboardInterrupt:
         print()
     finally:
         os.close(fd)
+    if timeout is not None and not rx:
+        return 2
     return 0
 
 
@@ -175,37 +228,56 @@ def cmd_send(legacy: bool, hex_args: list[str]) -> int:
         print("Usage: send 90 3c 40 ...", file=sys.stderr)
         return 1
     data = bytes(int(tok, 16) & 0xFF for tok in hex_args)
-    fd = open_uart(legacy)
+    fd, mode = open_uart(legacy)
     os.write(fd, data)
     os.close(fd)
-    print(f"Sent ({baud_mode_label(legacy)}): {' '.join(f'{b:02X}' for b in data)}")
+    print(f"Sent ({mode}): {' '.join(f'{b:02X}' for b in data)}")
     return 0
 
 
-def cmd_roundtrip(legacy: bool, hex_args: list[str]) -> int:
+def cmd_roundtrip(legacy: bool, hex_args: list[str], timeout: float) -> int:
     if not hex_args:
         print("Usage: roundtrip 90 3c 40 ...", file=sys.stderr)
         return 1
     data = bytes(int(tok, 16) & 0xFF for tok in hex_args)
-    fd = open_uart(legacy)
+    fd, mode = open_uart(legacy)
     os.write(fd, data)
-    print(f"Sent: {' '.join(f'{b:02X}' for b in data)}")
-    print("Listening 2s for RX (needs OUT→IN loopback)...")
-    deadline = time.time() + 2.0
-    while time.time() < deadline:
-        chunk = os.read(fd, 64)
-        if chunk:
-            print("RX:", " ".join(f"{b:02X}" for b in chunk))
+    print(f"Sent ({mode}): {' '.join(f'{b:02X}' for b in data)}")
+    print(f"Listening {timeout:g}s for RX (needs OUT→IN loopback)...")
+    rx = read_until_deadline(fd, time.time() + timeout)
     os.close(fd)
-    return 0
+    if rx:
+        print(f"RX: {' '.join(f'{b:02X}' for b in rx)}")
+    if rx == data:
+        print("OK: RX matches TX")
+        return 0
+    if not rx:
+        print("FAIL: no RX (wire MIDI OUT to MIDI IN?)", file=sys.stderr)
+        return 1
+    print(f"FAIL: expected {' '.join(f'{b:02X}' for b in data)}", file=sys.stderr)
+    return 1
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Raw UART MIDI test on /dev/ttyAMA0")
+    global DEVICE
+
+    parser = argparse.ArgumentParser(description="Raw UART MIDI test (no ALSA bridge)")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help=f"Serial device (default: {DEVICE})",
+    )
     parser.add_argument(
         "--legacy-baud",
         action="store_true",
-        help="Use B38400 + TIOCGSERIAL (original bento_ttymidi method)",
+        help="Try B38400 + TIOCGSERIAL before termios2",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=None,
+        metavar="SEC",
+        help="listen: stop after SEC (exit 2 if idle); roundtrip: RX window",
     )
     parser.add_argument(
         "command",
@@ -215,11 +287,15 @@ def main() -> int:
     parser.add_argument("hex_bytes", nargs="*", help="hex bytes for send/roundtrip")
     args = parser.parse_args()
 
+    if args.device:
+        DEVICE = args.device
+
     if args.command == "listen":
-        return cmd_listen(args.legacy_baud)
+        return cmd_listen(args.legacy_baud, args.timeout)
     if args.command == "send":
         return cmd_send(args.legacy_baud, args.hex_bytes)
-    return cmd_roundtrip(args.legacy_baud, args.hex_bytes)
+    timeout = args.timeout if args.timeout is not None else DEFAULT_ROUNDTRIP_TIMEOUT
+    return cmd_roundtrip(args.legacy_baud, args.hex_bytes, timeout)
 
 
 if __name__ == "__main__":
