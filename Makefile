@@ -5,7 +5,7 @@ TARGET  = bento_ttymidi
 SRC     = bento_ttymidi.c
 PREFIX  = /usr/local
 
-.PHONY: all install clean
+.PHONY: all install clean dist
 
 all: $(TARGET)
 
@@ -18,3 +18,6 @@ install: $(TARGET)
 
 clean:
 	rm -f $(TARGET)
+
+dist:
+	./setup/pack_bento_ttymidi.sh

@@ -6,43 +6,14 @@ cd "$ROOT"
 
 echo "Installing bento_ttymidi for Pi 5 / CM5 (Trixie)..."
 
-if ! command -v make >/dev/null 2>&1; then
-    echo "[ERROR] make not found. Install build-essential."
-    exit 1
+if [ ! -f dist/bento_ttymidi ] || [ ! -f dist/bento_ttymidi.service ]; then
+    echo "dist/ not found — running pack first..."
+    "$ROOT/setup/pack_bento_ttymidi.sh"
 fi
 
-if ! pkg-config --exists alsa 2>/dev/null; then
-    echo "[WARN] libasound2-dev may be missing (pkg-config alsa not found)"
-fi
-
-echo "Building..."
-make clean 2>/dev/null || true
-make
-
-echo "Installing binary to /usr/local/bin..."
-sudo install -m 755 bento_ttymidi /usr/local/bin/bento_ttymidi
-
-echo "Creating systemd service..."
-sudo tee /etc/systemd/system/bento_ttymidi.service > /dev/null <<'EOL'
-[Unit]
-Description=Bento UART MIDI bridge (bento_ttymidi)
-After=sound.target dev-ttyAMA0.device
-Requires=dev-ttyAMA0.device
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/bento_ttymidi --device /dev/ttyAMA0
-Restart=on-failure
-RestartSec=2
-KillSignal=SIGTERM
-TimeoutStopSec=5
-User=pi
-Group=pi
-SupplementaryGroups=audio dialout
-
-[Install]
-WantedBy=multi-user.target
-EOL
+echo "Installing from dist/..."
+sudo install -m 755 dist/bento_ttymidi /usr/local/bin/bento_ttymidi
+sudo install -m 644 dist/bento_ttymidi.service /etc/systemd/system/bento_ttymidi.service
 
 echo "Enabling service..."
 sudo systemctl daemon-reload

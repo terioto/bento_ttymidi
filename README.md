@@ -76,7 +76,16 @@ make
 sudo make install
 ```
 
-Or use the automated installer: [setup/README.md](setup/README.md)
+**Pack for integration** (binary + systemd unit into `dist/`):
+
+```bash
+./setup/pack_bento_ttymidi.sh
+# or: make dist
+```
+
+See [setup/README.md](setup/README.md) for copying `dist/` into an image or OS build.
+
+Or use the automated installer on a running Pi: [setup/README.md](setup/README.md)
 
 ---
 

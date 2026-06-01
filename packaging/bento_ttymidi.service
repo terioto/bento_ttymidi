@@ -1,0 +1,18 @@
+[Unit]
+Description=Bento UART MIDI bridge (bento_ttymidi)
+After=sound.target dev-ttyAMA0.device
+Requires=dev-ttyAMA0.device
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/bento_ttymidi --device /dev/ttyAMA0
+Restart=on-failure
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=5
+User=pi
+Group=pi
+SupplementaryGroups=audio dialout
+
+[Install]
+WantedBy=multi-user.target

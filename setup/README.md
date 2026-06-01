@@ -1,12 +1,49 @@
-# setup_bento_ttymidi.sh
+# Setup scripts
 
-Automated install of `bento_ttymidi` on **Raspberry Pi 5 / CM5** with **Debian Trixie**.
+Scripts for building, packaging, and installing `bento_ttymidi` on **Raspberry Pi 5 / CM5** with **Debian Trixie**.
 
 For project overview and UART config see the main [README.md](../README.md).
 
+| Script | Purpose |
+|--------|---------|
+| [`pack_bento_ttymidi.sh`](pack_bento_ttymidi.sh) | Build and stage binary + unit into [`dist/`](../dist/) |
+| [`setup_bento_ttymidi.sh`](setup_bento_ttymidi.sh) | Install from `dist/` on a running Pi |
+
 ---
 
-## Prerequisites
+## Pack for integration (`dist/`)
+
+Build installable artifacts (binary + systemd unit) for use by an external image or OS build — not for direct install on a running system:
+
+```bash
+chmod +x setup/pack_bento_ttymidi.sh
+./setup/pack_bento_ttymidi.sh
+# or: make dist
+```
+
+Output:
+
+```text
+dist/
+├── bento_ttymidi
+├── bento_ttymidi.service
+├── README.md
+└── VERSION              # git short hash, if available
+```
+
+Copy `dist/` into your integration file area (e.g. image overlay assets):
+
+```bash
+cp -a dist/* /path/to/your-build/files/bento_ttymidi/
+```
+
+See [`packaging/dist.README.md`](../packaging/dist.README.md) for rootfs install paths and image prerequisites (overlay, getty, groups).
+
+**Cross-build (optional):** `CC=aarch64-linux-gnu-gcc make` before pack, or run pack on the Pi.
+
+---
+
+## Prerequisites (install on Pi)
 
 ```bash
 sudo apt update
@@ -36,7 +73,7 @@ dtoverlay=midi-uart0-pi5
 
 ---
 
-## Install
+## Install on a running Pi
 
 Run from the repository root:
 
@@ -47,22 +84,21 @@ chmod +x setup/setup_bento_ttymidi.sh
 
 The script will:
 
-1. Build `bento_ttymidi` via `make`
-2. Install to `/usr/local/bin/bento_ttymidi`
-3. Create and enable `bento_ttymidi.service` (user `pi`, groups `audio` + `dialout`)
-4. Print a reminder if `/dev/ttyAMA0` is missing (reboot after config.txt changes)
-5. Warn if `serial-getty@ttyAMA0` is still active
+1. Run [`pack_bento_ttymidi.sh`](pack_bento_ttymidi.sh) if `dist/` is missing
+2. Install `dist/bento_ttymidi` and `dist/bento_ttymidi.service`
+3. Enable and start the systemd unit (user `pi`, groups `audio` + `dialout`)
+4. Warn if `/dev/ttyAMA0` is missing or serial-getty is active
 
-**Custom install user:** edit `User=` / `Group=` in `setup/setup_bento_ttymidi.sh` before running, and ensure that user is in `dialout` and `audio`.
+**Custom install user:** edit [`packaging/bento_ttymidi.service`](../packaging/bento_ttymidi.service), then re-run pack and setup.
 
 ---
 
-## Files Created
+## Files Created (on Pi)
 
-| Path | Purpose |
-|------|---------|
-| `/usr/local/bin/bento_ttymidi` | Binary |
-| `/etc/systemd/system/bento_ttymidi.service` | systemd unit |
+| Path | Source in repo |
+|------|----------------|
+| `/usr/local/bin/bento_ttymidi` | `dist/bento_ttymidi` |
+| `/etc/systemd/system/bento_ttymidi.service` | `dist/bento_ttymidi.service` |
 
 ---
 
@@ -90,29 +126,8 @@ Reboot optional.
 
 ---
 
-## systemd Unit (reference)
+## systemd unit (source of truth)
 
-The installer writes:
+[`packaging/bento_ttymidi.service`](../packaging/bento_ttymidi.service)
 
-```ini
-[Unit]
-Description=Bento UART MIDI bridge (bento_ttymidi)
-After=sound.target dev-ttyAMA0.device
-Requires=dev-ttyAMA0.device
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/bento_ttymidi --device /dev/ttyAMA0
-Restart=on-failure
-RestartSec=2
-KillSignal=SIGTERM
-TimeoutStopSec=5
-User=pi
-Group=pi
-SupplementaryGroups=audio dialout
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Add `--debug` to `ExecStart` for verbose logging.
+Add `--debug` to `ExecStart` for verbose logging, then re-pack and re-install.

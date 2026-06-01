@@ -1,5 +1,8 @@
 # Build artifact
 bento_ttymidi
 
+# Pack output (setup/pack_bento_ttymidi.sh)
+dist/
+
 # Local Bento stack docs / schematics (not versioned)
 bento/
