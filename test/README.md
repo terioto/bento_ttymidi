@@ -23,8 +23,8 @@ cd test
 | Script | Purpose |
 |--------|---------|
 | `run_tests.sh` | Runs OUT + IN tests via ALSA |
-| `test_midi_out.sh` | Plays `fixtures/bento_test.mid` into `bento_ttymidi:MIDI in` |
-| `test_midi_in.sh` | Captures events on `bento_ttymidi:MIDI out` |
+| `test_midi_out.sh` | Plays `fixtures/bento_test.mid` into `bento_ttymidi:TTY MIDI in` |
+| `test_midi_in.sh` | Captures events on `bento_ttymidi:TTY MIDI out` |
 | `monitor.sh` | Manual live monitor or recording |
 | `raw_uart_test.py` | Optional: direct UART send/listen without ALSA bridge |
 
@@ -38,7 +38,7 @@ Verifies that `aplaymidi` can send the test file to the bridge without error.
 
 ## MIDI IN test
 
-**Passive (default)** — listens for `${BENTO_CAPTURE_SEC:-5}` seconds on MIDI out.
+**Passive (default)** — listens for `${BENTO_CAPTURE_SEC:-5}` seconds on TTY MIDI out.
 Exits with code **2 (skip)** if nothing arrives (no keyboard connected).
 
 **Loopback** — round-trip when TX is wired to RX on the HAT. On **TRS Type-A**, a straight OUT→IN patch cable usually fails (OUT uses Tip, IN uses Ring). Use an external partner (Mac) or a Tip→Ring adapter.
@@ -72,6 +72,6 @@ Uses overlay B38400 by default (Pi 5 + `midi-uart0-pi5`). See `raw_uart_test.py 
 ## Manual monitoring
 
 ```bash
-./monitor.sh              # aseqdump on MIDI out
+./monitor.sh              # aseqdump on TTY MIDI out
 ./monitor.sh record out.mid
 ```

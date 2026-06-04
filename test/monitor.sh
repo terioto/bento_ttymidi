@@ -16,13 +16,13 @@ require_bento_ttymidi
 
 case "$MODE" in
     dump)
-        echo "Monitoring $CLIENT:MIDI out ($BENTO_MIDI_OUT_PORT)"
+        echo "Monitoring $CLIENT:TTY MIDI out ($BENTO_MIDI_OUT_PORT)"
         echo "Press Ctrl+C to stop."
         exec aseqdump -p "$BENTO_MIDI_OUT_PORT"
         ;;
     record)
         require_cmd arecordmidi
-        echo "Recording from $CLIENT:MIDI out ($BENTO_MIDI_OUT_PORT) -> $RECORD_FILE"
+        echo "Recording from $CLIENT:TTY MIDI out ($BENTO_MIDI_OUT_PORT) -> $RECORD_FILE"
         echo "Press Ctrl+C to stop."
         exec arecordmidi -p "$BENTO_MIDI_OUT_PORT" "$RECORD_FILE"
         ;;

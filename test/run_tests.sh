@@ -32,8 +32,8 @@ run_one() {
 echo "bento_ttymidi automated test suite"
 echo "Date: $(date -Iseconds 2>/dev/null || date)"
 
-run_one "MIDI OUT (aplaymidi -> MIDI in)" "$SCRIPT_DIR/test_midi_out.sh"
-run_one "MIDI IN (MIDI out capture)" "$SCRIPT_DIR/test_midi_in.sh"
+run_one "MIDI OUT (aplaymidi -> TTY MIDI in)" "$SCRIPT_DIR/test_midi_out.sh"
+run_one "MIDI IN (TTY MIDI out capture)" "$SCRIPT_DIR/test_midi_in.sh"
 
 echo ""
 echo "========================================"

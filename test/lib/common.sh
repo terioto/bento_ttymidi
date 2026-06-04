@@ -60,8 +60,8 @@ require_bento_ttymidi() {
         fi
     fi
 
-    in_port="$(find_port "MIDI in" || true)"
-    out_port="$(find_port "MIDI out" || true)"
+    in_port="$(find_port "TTY MIDI in" || true)"
+    out_port="$(find_port "TTY MIDI out" || true)"
 
     if [ -z "$in_port" ] || [ -z "$out_port" ]; then
         echo "[ERROR] ALSA ports not found for $CLIENT"

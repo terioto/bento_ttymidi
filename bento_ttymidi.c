@@ -241,11 +241,11 @@ static void open_alsa_ports(void) {
     snd_seq_set_client_name(seq, "bento_ttymidi");
     client_id = snd_seq_client_id(seq);
 
-    out_port = snd_seq_create_simple_port(seq, "MIDI out",
+    out_port = snd_seq_create_simple_port(seq, "TTY MIDI out",
         SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ,
         SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
 
-    in_port = snd_seq_create_simple_port(seq, "MIDI in",
+    in_port = snd_seq_create_simple_port(seq, "TTY MIDI in",
         SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE,
         SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
 

@@ -10,7 +10,7 @@ It connects software MIDI (ALSA) to a UART MIDI interface on **`/dev/ttyAMA0`** 
 
 - Bidirectional MIDI: ALSA ↔ UART (`/dev/ttyAMA0`)
 - Channel messages, SysEx, Running Status, MIDI Real-Time (Clock, Transport)
-- ALSA ports: `bento_ttymidi:MIDI in` (to hardware) and `bento_ttymidi:MIDI out` (from hardware)
+- ALSA ports: `bento_ttymidi:TTY MIDI in` (to hardware) and `bento_ttymidi:TTY MIDI out` (from hardware)
 - Loopback protection: hardware RX is not echoed back to UART TX
 - Optional `--debug` hex logging
 - systemd service for boot (see [setup/README.md](setup/README.md))
@@ -115,8 +115,8 @@ bento_ttymidi --help
 
 | Direction | ALSA client | Port name | Purpose |
 |-----------|-------------|-----------|---------|
-| Hardware → software | `bento_ttymidi` | `MIDI out` | Subscribe/read (UART RX) |
-| Software → hardware | `bento_ttymidi` | `MIDI in` | Connect/write (UART TX) |
+| Hardware → software | `bento_ttymidi` | `TTY MIDI out` | Subscribe/read (UART RX) |
+| Software → hardware | `bento_ttymidi` | `TTY MIDI in` | Connect/write (UART TX) |
 
 List ports:
 
@@ -127,14 +127,14 @@ aconnect -l
 Example connections (replace `CLIENT:PORT` with your app):
 
 ```bash
-aconnect 'CLIENT:PORT' 'bento_ttymidi:MIDI in'
-aconnect 'bento_ttymidi:MIDI out' 'CLIENT:PORT'
+aconnect 'CLIENT:PORT' 'bento_ttymidi:TTY MIDI in'
+aconnect 'bento_ttymidi:TTY MIDI out' 'CLIENT:PORT'
 ```
 
 Monitor hardware input:
 
 ```bash
-aseqdump -p 'bento_ttymidi:MIDI out'
+aseqdump -p 'bento_ttymidi:TTY MIDI out'
 ```
 
 Automated tests (Pi, `alsa-utils` installed, service running):
@@ -153,11 +153,11 @@ See [test/README.md](test/README.md) for MIDI IN/OUT scripts, loopback mode, and
 |------|------------------|----------|
 | UART active | `pinctrl funcs 14-15` | UART0 on GPIO14/15 |
 | Service | `systemctl status bento_ttymidi` | active (running) |
-| TX | `aconnect` → `MIDI in`, send notes | Output on UART TX |
-| RX | Source on UART RX, `aseqdump -p 'bento_ttymidi:MIDI out'` | Note/CC events |
+| TX | `aconnect` → `TTY MIDI in`, send notes | Output on UART TX |
+| RX | Source on UART RX, `aseqdump -p 'bento_ttymidi:TTY MIDI out'` | Note/CC events |
 | Program Change | Send PC from controller | No stream desync |
 | SysEx | Short SysEx dump | Visible in `aseqdump` or round-trip |
-| MIDI Clock | Sequencer clock → `MIDI in` | 0xF8 on wire (with `--debug`) |
+| MIDI Clock | Sequencer clock → `TTY MIDI in` | 0xF8 on wire (with `--debug`) |
 | Restart | `systemctl restart bento_ttymidi` | Clean restart |
 
 ---
@@ -171,8 +171,8 @@ See [test/README.md](test/README.md) for MIDI IN/OUT scripts, loopback mode, and
 | No RX/TX at all | `dtoverlay=midi-uart0-pi5`, disable `serial-getty@ttyAMA0` |
 | Garbled bytes (e.g. `48 05 FF` instead of `90 2F 40`) | Wrong baud mode: use overlay B38400, not termios2 @ 31250; rebuild `bento_ttymidi` |
 | dmesg: custom speed deprecated | Legacy TIOCGSERIAL path; harmless if overlay + B38400 is used |
-| No ALSA output from source | `aconnect` `MIDI out` to your app |
-| No output on UART TX | `aconnect` your app to `bento_ttymidi:MIDI in` |
+| No ALSA output from source | `aconnect` `TTY MIDI out` to your app |
+| No output on UART TX | `aconnect` your app to `bento_ttymidi:TTY MIDI in` |
 | Manual run: permission denied | `sudo usermod -aG dialout pi` (then re-login) |
 | Baud rate / framing errors | Kernel ≥ 6.12.32 recommended; verify with `--debug` |
 | Permission denied (service) | Service runs as `pi`; needs `dialout` (and `audio`) — see [setup/README.md](setup/README.md) |

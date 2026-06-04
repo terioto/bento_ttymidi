@@ -1,5 +1,5 @@
 #!/bin/bash
-# MIDI OUT test: play bento_test.mid into bento_ttymidi:MIDI in via aplaymidi.
+# MIDI OUT test: play bento_test.mid into bento_ttymidi:TTY MIDI in via aplaymidi.
 
 set -euo pipefail
 
@@ -20,7 +20,7 @@ if [ ! -f "$MID_FILE" ]; then
 fi
 
 echo "=== bento_ttymidi MIDI OUT test ==="
-echo "Target port : $BENTO_MIDI_IN_PORT ($CLIENT:MIDI in)"
+echo "Target port : $BENTO_MIDI_IN_PORT ($CLIENT:TTY MIDI in)"
 echo "MIDI file   : $MID_FILE"
 echo ""
 
