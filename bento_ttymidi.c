@@ -6,46 +6,29 @@
 #include <errno.h>
 #include <termios.h>
 #include <pthread.h>
-#include <linux/serial.h>
-#include <sys/ioctl.h>
 #include <alsa/asoundlib.h>
 
-#define DEVICE "/dev/serial0"
-#define BAUDRATE 31250
+/*
+ * UART0 on GPIO14/15. On the Pi 5, /dev/serial0 is the debug UART (ttyAMA10),
+ * so open ttyAMA0 directly. On the Pi 4 with dtoverlay=disable-bt it is the same port.
+ */
+#define DEFAULT_DEVICE "/dev/ttyAMA0"
 
 int serial_fd;
 snd_seq_t *seq;
 int out_port, in_port;
 int debug = 0;
-
-void set_custom_baudrate(int fd, int speed) {
-    struct serial_struct ser;
-    if (ioctl(fd, TIOCGSERIAL, &ser) < 0) {
-        perror("[ERROR] ioctl TIOCGSERIAL");
-        exit(1);
-    }
-
-    ser.custom_divisor = ser.baud_base / speed;
-    ser.flags &= ~ASYNC_SPD_MASK;
-    ser.flags |= ASYNC_SPD_CUST;
-
-    if (ioctl(fd, TIOCSSERIAL, &ser) < 0) {
-        perror("[ERROR] ioctl TIOCSSERIAL");
-        exit(1);
-    }
-
-    if (debug) printf("[INFO] Custom baudrate %d applied\n", speed);
-}
+const char *device = DEFAULT_DEVICE;
 
 void open_serial() {
     struct termios tty;
 
-    serial_fd = open(DEVICE, O_RDWR | O_NOCTTY);
+    serial_fd = open(device, O_RDWR | O_NOCTTY);
     if (serial_fd < 0) {
         perror("[ERROR] open serial device");
         exit(1);
     }
-    if (debug) printf("[INFO] Opened serial device: %s\n", DEVICE);
+    if (debug) printf("[INFO] Opened serial device: %s\n", device);
 
     memset(&tty, 0, sizeof tty);
     if (tcgetattr(serial_fd, &tty) != 0) {
@@ -53,6 +36,11 @@ void open_serial() {
         exit(1);
     }
 
+    /*
+     * 38400 here is 31250 on the wire: the midi-uart0 (Pi 4) and midi-uart0-pi5 (Pi 5)
+     * overlays set the UART clock that way. A custom divisor (TIOCSSERIAL) is not needed,
+     * the PL011 driver ignores it and the kernel only logs "sets custom speed ... deprecated".
+     */
     cfmakeraw(&tty);
     cfsetspeed(&tty, B38400);
     tty.c_cflag |= (CLOCAL | CREAD);
@@ -62,8 +50,7 @@ void open_serial() {
         perror("[ERROR] tcsetattr");
         exit(1);
     }
-
-    set_custom_baudrate(serial_fd, BAUDRATE);
+    if (debug) printf("[INFO] Serial 8N1 at B38400 (31250 baud with the midi-uart overlay)\n");
 }
 
 void open_alsa_ports() {
@@ -180,8 +167,22 @@ void send_bytes(const unsigned char *data, int len, int client, int port) {
 }
 
 int main(int argc, char *argv[]) {
-    if (argc > 1 && strcmp(argv[1], "--debug") == 0) {
-        debug = 1;
+    /* -s and -v: older docs suggested "bento_ttymidi -s /dev/ttyAMA0 -v", keep it working */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--debug") == 0 || strcmp(argv[i], "-v") == 0) {
+            debug = 1;
+        } else if ((strcmp(argv[i], "--device") == 0 || strcmp(argv[i], "-s") == 0) && i + 1 < argc) {
+            device = argv[++i];
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            printf("Usage: %s [--device PATH] [--debug]\n"
+                   "  --device PATH  serial device (default: %s)\n"
+                   "  --debug        print every byte\n",
+                   argv[0], DEFAULT_DEVICE);
+            return 0;
+        } else {
+            /* older versions ignored unknown options, so do not stop a running setup */
+            fprintf(stderr, "[WARN] Ignoring unknown option: %s\n", argv[i]);
+        }
     }
 
     pthread_t thread;

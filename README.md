@@ -93,7 +93,23 @@ After editing, reboot your system:
 sudo reboot
 ```
 
-You should now see `/dev/serial0` → usually linked to `/dev/ttyAMA0`
+After the reboot `/dev/ttyAMA0` should exist (`ls -l /dev/ttyAMA0`). `bento_ttymidi` opens it by default.
+
+> **Raspberry Pi 5:** `/dev/serial0` is the debug UART there (`ttyAMA10`), not GPIO14/15. Use `/dev/ttyAMA0`.
+
+The overlay sets the UART clock so that 38400 baud in software are 31250 baud on the wire. Without the overlay MIDI does not work. Older versions of `bento_ttymidi` also set a custom divisor, which made the kernel log `bento_ttymidi sets custom speed on ttyAMA0. This is deprecated.` The current version does not do that anymore.
+
+If a login console holds the port, disable it:
+
+```bash
+sudo systemctl disable --now serial-getty@ttyAMA0.service
+```
+
+Your user needs the group `dialout` for the serial port:
+
+```bash
+sudo usermod -aG dialout $USER
+```
 
 ---
 
@@ -106,7 +122,13 @@ bento_ttymidi --debug
 ### Manual start silently:
 
 ```bash
-bento_ttymidi -s /dev/ttyAMA0 -v &
+bento_ttymidi &
+```
+
+### Another serial device:
+
+```bash
+bento_ttymidi --device /dev/ttyAMA0
 ```
 
 ### Check ALSA configuration (client IDs can be different):
@@ -161,8 +183,8 @@ Paste the following:
 ```ini
 [Unit]
 Description=Bento UART MIDI bridge (bento_ttymidi)
-After=sound.target dev-serial0.device
-Requires=dev-serial0.device
+After=sound.target dev-ttyAMA0.device
+Requires=dev-ttyAMA0.device
 
 [Service]
 ExecStart=/usr/local/bin/bento_ttymidi
