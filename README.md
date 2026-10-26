@@ -219,8 +219,10 @@ systemctl status bento_ttymidi.service
 
 ## License
 
-Based on ttymidi by Jonathan Lissajoux (https://github.com/lathoub/ttymidi), licensed under the MIT License.
-The original repository is no longer available, but various forks and archives remain accessible.
+MIT, see [LICENSE](LICENSE).
+
+The name follows ttymidi by Thiago Teixeira (GPL-3.0), a serial MIDI bridge for ALSA.
+bento_ttymidi is a separate implementation and contains no code from it.
 
 ---
 
